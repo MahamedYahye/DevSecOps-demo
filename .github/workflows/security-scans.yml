@@ -65,9 +65,8 @@ jobs:
             echo "secrets_found=false" >> $GITHUB_OUTPUT
           fi
       
-      - name: Upload Gitleaks report
+      - name: Display Gitleaks report
         if: steps.check-output.outputs.secrets_found == 'true'
-        uses: actions/upload-artifact@v3
-        with:
-          name: gitleaks-report
-          path: gitleaks-report.json
+        run: |
+          echo "## Gitleaks Report" >> $GITHUB_STEP_SUMMARY
+          cat gitleaks-report.json | jq -r >> $GITHUB_STEP_SUMMARY
