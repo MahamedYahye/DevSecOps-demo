@@ -1,6 +1,4 @@
-# .github/workflows/security-scans.yml
 name: Security Scans
-
 on:
   push:
     branches: [ main, master ]
@@ -8,11 +6,14 @@ on:
     branches: [ main, master ]
   workflow_dispatch:
 
+permissions:
+  contents: read
+  security-events: write
+
 jobs:
   semgrep-scan:
     name: Semgrep SAST Scan
     runs-on: self-hosted
-    
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -22,26 +23,25 @@ jobs:
       - name: Run Semgrep scan
         run: |
           docker run -v $(pwd):/src \
-            -e SEMGREP_APP_TOKEN=${{ secrets.SEMGREP_APP_TOKEN }} \
-            -e SEMGREP_REPO_URL=https://github.com/${{ github.repository }} \
-            -e SEMGREP_REPO_NAME=${{ github.repository }} \
-            -e SEMGREP_BRANCH=${{ github.ref_name }} \
-            -e SEMGREP_JOB_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
-            -e SEMGREP_COMMIT=${{ github.sha }} \
-            -e SEMGREP_PR_ID=${{ github.event.pull_request.number }} \
-            semgrep/semgrep semgrep ci
+          -e SEMGREP_APP_TOKEN=${{ secrets.SEMGREP_APP_TOKEN }} \
+          -e SEMGREP_REPO_URL=https://github.com/${{ github.repository }} \
+          -e SEMGREP_REPO_NAME=${{ github.repository }} \
+          -e SEMGREP_BRANCH=${{ github.ref_name }} \
+          -e SEMGREP_JOB_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+          -e SEMGREP_COMMIT=${{ github.sha }} \
+          -e SEMGREP_PR_ID=${{ github.event.pull_request.number }} \
+          semgrep/semgrep semgrep ci --sarif --output=semgrep.sarif
       
       - name: Upload Semgrep SARIF file
-        uses: github/codeql-action/upload-sarif@v2
+        uses: github/codeql-action/upload-sarif@v3
         if: always()
         with:
           sarif_file: semgrep.sarif
           wait-for-processing: true
-
+  
   gitleaks-scan:
     name: Gitleaks Secret Scanning
     runs-on: self-hosted
-    
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -51,7 +51,7 @@ jobs:
       - name: Run Gitleaks
         run: |
           docker run -v $(pwd):/path zricethezav/gitleaks:latest detect --source="/path" -v --report-format json --report-path gitleaks-report.json
-        continue-on-error: true  # Prevent the workflow from failing if secrets are found
+        continue-on-error: true
       
       - name: Check for Gitleaks output
         id: check-output
