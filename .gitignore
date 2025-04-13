@@ -1,0 +1,5 @@
+# Negeer macOS-bestanden
+.DS_Store
+
+# Negeer pre-commit configuratie als je die alleen lokaal wilt houden
+.pre-commit-config.yaml
