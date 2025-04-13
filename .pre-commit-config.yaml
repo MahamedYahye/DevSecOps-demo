@@ -1,0 +1,36 @@
+repos:
+# Python linting and formatting
+- repo: https://github.com/pre-commit/pre-commit-hooks
+  rev: v4.4.0
+  hooks:
+    - id: trailing-whitespace
+    - id: end-of-file-fixer
+    - id: check-yaml
+    - id: check-added-large-files
+- repo: https://github.com/pycqa/flake8
+  rev: 6.0.0
+  hooks:
+    - id: flake8
+      additional_dependencies: [flake8-docstrings]
+- repo: https://github.com/pycqa/isort
+  rev: 5.12.0
+  hooks:
+    - id: isort
+- repo: https://github.com/psf/black
+  rev: 23.3.0
+  hooks:
+    - id: black
+# Security scanning with custom Docker hooks
+- repo: local
+  hooks:
+    - id: semgrep-docker
+      name: Semgrep Security Scan
+      entry: bash -c 'docker run --security-opt=no-new-privileges -v "$(pwd):/src:ro" --rm semgrep/semgrep:1.49.0 semgrep --config=auto'
+      language: system
+      pass_filenames: false
+      verbose: true
+    - id: gitleaks-docker
+      name: Gitleaks Secret Scan
+      entry: bash -c 'docker run -v "$(pwd):/path:ro" --rm zricethezav/gitleaks:v8.16.3 detect --source="/path" -v'
+      language: system
+      pass_filenames: false
