@@ -19,7 +19,7 @@
 #         uses: actions/checkout@v3
 #         with:
 #           fetch-depth: 0
-      
+
 #       - name: Run Semgrep scan
 #         run: |
 #           docker run -v $(pwd):/src \
@@ -31,14 +31,14 @@
 #           -e SEMGREP_COMMIT=${{ github.sha }} \
 #           -e SEMGREP_PR_ID=${{ github.event.pull_request.number }} \
 #           semgrep/semgrep semgrep ci --sarif --output=semgrep.sarif
-      
+
 #       - name: Upload Semgrep SARIF file
 #         uses: github/codeql-action/upload-sarif@v3
 #         if: always()
 #         with:
 #           sarif_file: semgrep.sarif
 #           wait-for-processing: true
-  
+
 #   gitleaks-scan:
 #     name: Gitleaks Secret Scanning
 #     runs-on: self-hosted
@@ -47,12 +47,12 @@
 #         uses: actions/checkout@v3
 #         with:
 #           fetch-depth: 0
-      
+
 #       - name: Run Gitleaks
 #         run: |
 #           docker run -v $(pwd):/path zricethezav/gitleaks:latest detect --source="/path" -v --report-format json --report-path gitleaks-report.json
 #         continue-on-error: true
-      
+
 #       - name: Check for Gitleaks output
 #         id: check-output
 #         run: |
@@ -64,7 +64,7 @@
 #             echo "No secrets found by Gitleaks."
 #             echo "secrets_found=false" >> $GITHUB_OUTPUT
 #           fi
-      
+
 #       - name: Display Gitleaks report
 #         if: steps.check-output.outputs.secrets_found == 'true'
 #         run: |
@@ -74,6 +74,7 @@
 
 
 name: Security Scans
+
 on:
   push:
     branches: [ main, master ]
@@ -94,27 +95,27 @@ jobs:
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
-          
-      - name: Run Semgrep scan
+
+      - name: Run Semgrep scan (SARIF)
         run: |
-          docker run -v $(pwd):/src \
-          -e SEMGREP_APP_TOKEN=${{ secrets.SEMGREP_APP_TOKEN }} \
-          -e SEMGREP_REPO_URL=https://github.com/${{ github.repository }} \
-          -e SEMGREP_REPO_NAME=${{ github.repository }} \
-          -e SEMGREP_BRANCH=${{ github.ref_name }} \
-          -e SEMGREP_JOB_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
-          -e SEMGREP_COMMIT=${{ github.sha }} \
-          -e SEMGREP_PR_ID=${{ github.event.pull_request.number }} \
-          semgrep/semgrep semgrep ci --sarif --output=semgrep.sarif
-          
-      - name: Upload Semgrep SARIF file
+          docker run -v "$(pwd)":/src \
+            -e SEMGREP_APP_TOKEN="${{ secrets.SEMGREP_APP_TOKEN }}" \
+            -e SEMGREP_REPO_URL="https://github.com/${{ github.repository }}" \
+            -e SEMGREP_REPO_NAME="${{ github.repository }}" \
+            -e SEMGREP_BRANCH="${{ github.ref_name }}" \
+            -e SEMGREP_JOB_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            -e SEMGREP_COMMIT="${{ github.sha }}" \
+            -e SEMGREP_PR_ID="${{ github.event.pull_request.number }}" \
+            semgrep/semgrep semgrep ci --sarif --output=semgrep.sarif
+
+      - name: Upload Semgrep SARIF file to GitHub Security
         uses: github/codeql-action/upload-sarif@v3
         if: always()
         with:
           sarif_file: semgrep.sarif
           wait-for-processing: true
-          
-      - name: Upload Semgrep to DefectDojo
+
+      - name: Upload Semgrep results to DefectDojo
         if: success() && github.event_name == 'push'
         run: |
           curl -X POST \
@@ -122,10 +123,10 @@ jobs:
             -F "scan_date=$(date +%Y-%m-%d)" \
             -F "engagement=${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}" \
             -F "file=@semgrep.sarif" \
-            -F "scan_type=Semgrep JSON Report" \
+            -F "scan_type=Semgrep SARIF Report" \
             ${{ secrets.DEFECTDOJO_URL }}/api/v2/import-scan/
         continue-on-error: true
-          
+
   gitleaks-scan:
     name: Gitleaks Secret Scanning
     runs-on: self-hosted
@@ -134,32 +135,31 @@ jobs:
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
-          
-      - name: Run Gitleaks
+
+      - name: Run Gitleaks scan
         run: |
-          docker run -v $(pwd):/path zricethezav/gitleaks:latest detect --source="/path" -v --report-format json --report-path gitleaks-report.json
+          docker run -v "$(pwd)":/path zricethezav/gitleaks:latest detect --source="/path" --report-format json --report-path gitleaks-report.json
         continue-on-error: true
-        
+
       - name: Check for Gitleaks output
-        id: check-output
+        id: check-gitleaks
         run: |
-          if [ -f gitleaks-report.json ]; then
+          if [ -f gitleaks-report.json ] && [ "$(cat gitleaks-report.json | jq '. | length')" -gt 0 ]; then
             echo "Gitleaks found potential secrets. See the report for details."
-            cat gitleaks-report.json | jq .
             echo "secrets_found=true" >> $GITHUB_OUTPUT
           else
             echo "No secrets found by Gitleaks."
             echo "secrets_found=false" >> $GITHUB_OUTPUT
           fi
-          
-      - name: Display Gitleaks report
-        if: steps.check-output.outputs.secrets_found == 'true'
+
+      - name: Display Gitleaks Report
+        if: steps.check-gitleaks.outputs.secrets_found == 'true'
         run: |
-          echo "## Gitleaks Report" >> $GITHUB_STEP_SUMMARY
-          cat gitleaks-report.json | jq -r >> $GITHUB_STEP_SUMMARY
-          
-      - name: Upload Gitleaks to DefectDojo
-        if: steps.check-output.outputs.secrets_found == 'true' && github.event_name == 'push'
+          echo "## Gitleaks Report:" >> $GITHUB_STEP_SUMMARY
+          cat gitleaks-report.json | jq .
+
+      - name: Upload Gitleaks results to DefectDojo
+        if: steps.check-gitleaks.outputs.secrets_found == 'true' && github.event_name == 'push'
         run: |
           curl -X POST \
             -H "Authorization: Token ${{ secrets.DEFECTDOJO_API_KEY }}" \
@@ -167,5 +167,4 @@ jobs:
             -F "engagement=${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}" \
             -F "file=@gitleaks-report.json" \
             -F "scan_type=Gitleaks Scan" \
-            ${{ secrets.DEFECTDOJO_URL }}/api/v2/import-scan/
-        continue-on-error: true
+            ${{ secrets.DEFECTDOJO_URL }}/api/v2_
