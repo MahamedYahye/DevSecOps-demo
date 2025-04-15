@@ -415,17 +415,26 @@ jobs:
       # SEMGREP SCANNING - één enkele scan
       - name: Run Semgrep
         run: |
-          # Voer Semgrep één keer uit met SARIF output (kan worden gebruikt voor GitHub Security)
-          docker run --rm --security-opt=no-new-privileges -v $(pwd):/src:ro \
+          # Maak een tijdelijke directory voor output
+          mkdir -p semgrep_output
+          
+          # Voer Semgrep uit met output naar een bestand binnen de container
+          docker run --rm --security-opt=no-new-privileges \
+            -v $(pwd):/src:ro \
+            -v $(pwd)/semgrep_output:/output \
             -e SEMGREP_APP_TOKEN=${{ secrets.SEMGREP_APP_TOKEN }} \
             -e SEMGREP_REPO_URL=https://github.com/${{ github.repository }} \
-            semgrep/semgrep:${{ env.SEMGREP_VERSION }} semgrep ci --sarif --output=semgrep.sarif
+            semgrep/semgrep:${{ env.SEMGREP_VERSION }} \
+            semgrep ci --sarif --output=/output/semgrep.sarif
           
-          # Genereer JSON output voor DefectDojo met jq (zonder opnieuw te scannen)
-          # Dit is een vereenvoudigde omzetting en mogelijk moet je het vertaalschema aanpassen
-          if [ -f semgrep.sarif ]; then
-            jq -c '.runs[0].results' semgrep.sarif > semgrep-results.json
-          fi
+          # Controleer of het bestand bestaat
+          ls -la semgrep_output/
+          
+          # Verplaats naar verwachte locatie
+          mv semgrep_output/semgrep.sarif .
+          
+          # Genereer JSON output voor DefectDojo
+          jq -c '.runs[0].results' semgrep.sarif > semgrep-results.json
       
       - name: Upload to GitHub Security
         uses: github/codeql-action/upload-sarif@v3
@@ -435,10 +444,22 @@ jobs:
       # GITLEAKS SCANNING
       - name: Run Gitleaks
         run: |
+          # Maak output directory
+          mkdir -p gitleaks_output
+          
           # Scan uitvoeren (doorgaan bij secrets gevonden)
-          docker run --rm --security-opt=no-new-privileges -v $(pwd):/path:ro \
+          docker run --rm --security-opt=no-new-privileges \
+            -v $(pwd):/path:ro \
+            -v $(pwd)/gitleaks_output:/output \
             zricethezav/gitleaks:${{ env.GITLEAKS_VERSION }} detect --source="/path" \
-            --report-format json > gitleaks-report.json || true
+            --report-format json --report-path=/output/gitleaks-report.json || true
+          
+          # Controleer of het bestand bestaat
+          if [ -f gitleaks_output/gitleaks-report.json ]; then
+            mv gitleaks_output/gitleaks-report.json .
+          else
+            echo "[]" > gitleaks-report.json
+          fi
           
           # Findings tonen in GitHub summary
           echo "## Gitleaks Findings" >> $GITHUB_STEP_SUMMARY
