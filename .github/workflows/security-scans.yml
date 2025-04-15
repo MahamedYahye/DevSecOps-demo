@@ -252,28 +252,21 @@ jobs:
         with:
           fetch-depth: 0
         
-      - name: Run Gitleaks
+      - name: Run Gitleaks with continue-on-leak
         run: |
           echo "Running Gitleaks scan..."
-          docker run --rm -v $(pwd):/path zricethezav/gitleaks:latest detect --source="/path" --report-format json > gitleaks-results.json
+          # Laat altijd door gaan, zelfs als er secrets worden gevonden
+          docker run --rm -v $(pwd):/path zricethezav/gitleaks:latest detect --source="/path" --report-format json --report-path=/path/gitleaks-findings.json || true
           
-          echo "Checking Gitleaks output..."
-          ls -la gitleaks-results.json || echo "File not found"
-          cat gitleaks-results.json || echo "Cannot read file"
-        continue-on-error: true
-    
-      - name: Format Gitleaks Output
-        run: |
-          if [ -s gitleaks-results.json ]; then
-            echo "Formatting Gitleaks results for DefectDojo..."
-            cat gitleaks-results.json | jq '.' > formatted-gitleaks.json
+          if [ -f gitleaks-findings.json ]; then
+            echo "Gitleaks rapport gevonden"
+            cat gitleaks-findings.json
+            echo "Kopiëren naar verwachte locatie"
+            cp gitleaks-findings.json formatted-gitleaks.json
           else
-            echo "Creating empty Gitleaks report..."
+            echo "Geen gitleaks rapport gevonden, maak een leeg rapport"
             echo "[]" > formatted-gitleaks.json
           fi
-          
-          echo "Formatted output:"
-          cat formatted-gitleaks.json
         continue-on-error: true
       
       - name: Upload Gitleaks to DefectDojo
@@ -298,9 +291,9 @@ jobs:
         
       - name: Display Gitleaks Report in GitHub Summary
         run: |
-          if [ -s gitleaks-results.json ]; then
+          if [ -s formatted-gitleaks.json ]; then
             echo "## Gitleaks Report" >> $GITHUB_STEP_SUMMARY
-            cat gitleaks-results.json | jq . >> $GITHUB_STEP_SUMMARY
+            cat formatted-gitleaks.json | jq . >> $GITHUB_STEP_SUMMARY
             echo "Secrets found by Gitleaks. See the report for details."
           else
             echo "No secrets found by Gitleaks or report generation failed." >> $GITHUB_STEP_SUMMARY
