@@ -500,7 +500,6 @@ permissions:
 
 # Gemeenschappelijke variabelen
 env:
-  DEFECTDOJO_UPLOAD: ${{ github.event_name == 'push' }}
   SEMGREP_VERSION: "1.76.0"
   GITLEAKS_VERSION: "v8.16.3"
 
@@ -577,7 +576,7 @@ jobs:
   upload-to-defectdojo:
     name: Upload to DefectDojo
     needs: [semgrep-scan, gitleaks-scan]
-    if: env.DEFECTDOJO_UPLOAD == 'true'
+    if: github.event_name == 'push'
     runs-on: self-hosted
     steps:
       # Download scan resultaten
