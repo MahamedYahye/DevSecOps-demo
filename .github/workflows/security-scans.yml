@@ -487,6 +487,7 @@
 #           upload_to_defectdojo "gitleaks-report.json" "Gitleaks Scan" "Gitleaks"
 
 name: Parallel Security Scans
+
 on:
   push:
     branches: [main, master]
@@ -505,59 +506,81 @@ env:
 
 jobs:
   semgrep-scan:
-    name: SAST Scan
+    name: Semgrep SAST Scan
     runs-on: self-hosted
     steps:
       - uses: actions/checkout@v3
       
-      - name: Run Semgrep
+      - name: Run Semgrep Scan (SARIF)
         run: |
-          docker run --rm -v $(pwd):/src \
+          docker run --rm --security-opt=no-new-privileges \
+            --user $(id -u):$(id -g) \
+            -v "$(pwd)":/src \
             semgrep/semgrep:${{ env.SEMGREP_VERSION }} \
             semgrep --config=auto --sarif > semgrep.sarif
           
-      - name: Upload SARIF
+      - name: Upload Semgrep SARIF to GitHub Security
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: semgrep.sarif
 
   gitleaks-scan:
-    name: Secret Scan
+    name: Gitleaks Secret Scan
     runs-on: self-hosted
     steps:
       - uses: actions/checkout@v3
       
-      - name: Run Gitleaks
+      - name: Run Gitleaks Scan
         run: |
-          docker run --rm -v $(pwd):/src \
+          docker run --rm --security-opt=no-new-privileges \
+            --user $(id -u):$(id -g) \
+            -v "$(pwd)":/src \
             zricethezav/gitleaks:${{ env.GITLEAKS_VERSION }} \
-            detect --source="/src" --report-format sarif --report-path gitleaks.sarif
+            detect --source="/src" --report-format sarif --report-path /src/gitleaks-report.sarif
           
-      - name: Upload SARIF
+      - name: Upload Gitleaks SARIF to GitHub Security
         uses: github/codeql-action/upload-sarif@v3
         with:
-          sarif_file: gitleaks.sarif
+          sarif_file: gitleaks-report.sarif
 
   defectdojo-upload:
-    name: Upload Results
+    name: Upload Results to DefectDojo
     needs: [semgrep-scan, gitleaks-scan]
     if: github.event_name == 'push'
     runs-on: self-hosted
     steps:
       - uses: actions/checkout@v3
       
-      - name: Download Reports
-        run: |
-          gh api /repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts | jq .
-          gh run download ${{ github.run_id }} --name semgrep.sarif
-          gh run download ${{ github.run_id }} --name gitleaks.sarif
-          
+      - name: List Files for Debug
+        run: ls -l
+      
       - name: Upload to DefectDojo
         run: |
-          curl -X POST -H "Authorization: Token ${{ secrets.DEFECTDOJO_API_KEY }}" \
-            -F "file=@semgrep.sarif" \
-            "${{ secrets.DEFECTDOJO_URL }}/api/v2/import-scan/"
+          upload_to_defectdojo() {
+            local file="$1"
+            local scan_type="$2"
+            local description="$3"
+            if [ ! -f "$file" ]; then
+              echo "$file not found, skipping upload."
+              return 1
+            fi
+            echo "Uploading $description using $file..."
+            RESULT=$(curl -s -w "\n%{http_code}" -X POST \
+              -H "Authorization: Token ${{ secrets.DEFECTDOJO_API_KEY }}" \
+              -F "scan_date=$(date +%Y-%m-%d)" \
+              -F "engagement=${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}" \
+              -F "file=@$file" \
+              -F "scan_type=$scan_type" \
+              -F "close_old_findings=true" \
+              "${{ secrets.DEFECTDOJO_URL }}/api/v2/import-scan/")
+            STATUS_CODE=$(echo "$RESULT" | tail -n1)
+            CONTENT=$(echo "$RESULT" | sed '$d')
+            echo "$description upload status: $STATUS_CODE"
+            echo "Response: $CONTENT"
+          }
           
-          curl -X POST -H "Authorization: Token ${{ secrets.DEFECTDOJO_API_KEY }}" \
-            -F "file=@gitleaks.sarif" \
-            "${{ secrets.DEFECTDOJO_URL }}/api/v2/import-scan/"
+          # Upload Semgrep results (SARIF) – controleer of DefectDojo deze scan_type accepteert
+          upload_to_defectdojo "semgrep.sarif" "Semgrep SARIF" "Semgrep Scan"
+          
+          # Upload Gitleaks results (SARIF)
+          upload_to_defectdojo "gitleaks-report.sarif" "Gitleaks SARIF" "Gitleaks Scan"
