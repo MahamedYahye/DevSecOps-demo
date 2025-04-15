@@ -527,13 +527,13 @@ jobs:
       
       # Upload SARIF naar GitHub Security
       - name: Upload to GitHub Security
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v2
         with:
           sarif_file: semgrep.sarif
           
-      # Bewaar resultaten voor upload job
+      # Bewaar resultaten voor upload job (oudere versie van actie)
       - name: Save Semgrep results
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v2
         with:
           name: semgrep-results
           path: semgrep-results.json
@@ -564,9 +564,9 @@ jobs:
             cat gitleaks-report.json | jq . >> $GITHUB_STEP_SUMMARY || echo "Failed to display Gitleaks findings"
           fi
       
-      # Bewaar resultaten voor upload job
+      # Bewaar resultaten voor upload job (oudere versie van actie)
       - name: Save Gitleaks results
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v2
         with:
           name: gitleaks-results
           path: gitleaks-report.json
@@ -579,14 +579,14 @@ jobs:
     if: github.event_name == 'push'
     runs-on: self-hosted
     steps:
-      # Download scan resultaten
+      # Download scan resultaten (oudere versie van actie)
       - name: Download Semgrep results
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v2
         with:
           name: semgrep-results
           
       - name: Download Gitleaks results
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v2
         with:
           name: gitleaks-results
       
