@@ -251,60 +251,58 @@ jobs:
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
+        
+      - name: Run Gitleaks
+        run: |
+          echo "Running Gitleaks scan..."
+          docker run --rm -v $(pwd):/path zricethezav/gitleaks:latest detect --source="/path" --report-format json > gitleaks-results.json
           
-      - name: Run Gitleaks and Upload to DefectDojo
+          echo "Checking Gitleaks output..."
+          ls -la gitleaks-results.json || echo "File not found"
+          cat gitleaks-results.json || echo "Cannot read file"
+        continue-on-error: true
+    
+      - name: Format Gitleaks Output
+        run: |
+          if [ -s gitleaks-results.json ]; then
+            echo "Formatting Gitleaks results for DefectDojo..."
+            cat gitleaks-results.json | jq '.' > formatted-gitleaks.json
+          else
+            echo "Creating empty Gitleaks report..."
+            echo "[]" > formatted-gitleaks.json
+          fi
+          
+          echo "Formatted output:"
+          cat formatted-gitleaks.json
+        continue-on-error: true
+      
+      - name: Upload Gitleaks to DefectDojo
         if: github.event_name == 'push'
         run: |
-          echo "Running Gitleaks and uploading results to DefectDojo..."
+          echo "Uploading Gitleaks results to DefectDojo..."
+          RESPONSE=$(curl -w "\n%{http_code}" -X POST \
+            -H "Authorization: Token ${{ secrets.DEFECTDOJO_API_KEY }}" \
+            -F "scan_date=$(date +%Y-%m-%d)" \
+            -F "engagement=${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}" \
+            -F "file=@formatted-gitleaks.json" \
+            -F "scan_type=Gitleaks Scan" \
+            -F "close_old_findings=true" \
+            ${{ secrets.DEFECTDOJO_URL }}/api/v2/import-scan/)
           
-          # Voer Gitleaks uit in gedeeld volume met expliciet outputpad
-          docker run -v $(pwd):/path zricethezav/gitleaks:latest detect --source="/path" --report-format json --report-path=/path/gitleaks-report.json
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          CONTENT=$(echo "$RESPONSE" | sed '$d')
           
-          # Check of het rapport is gegenereerd
-          if [ -f gitleaks-report.json ] && [ -s gitleaks-report.json ]; then
-            echo "Gitleaks rapport gegenereerd, uploaden naar DefectDojo..."
-            
-            RESPONSE=$(curl -w "\n%{http_code}" -X POST \
-              -H "Authorization: Token ${{ secrets.DEFECTDOJO_API_KEY }}" \
-              -F "scan_date=$(date +%Y-%m-%d)" \
-              -F "engagement=${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}" \
-              -F "file=@gitleaks-report.json" \
-              -F "scan_type=Gitleaks Scan" \
-              -F "close_old_findings=true" \
-              ${{ secrets.DEFECTDOJO_URL }}/api/v2/import-scan/)
-            
-            HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
-            CONTENT=$(echo "$RESPONSE" | sed '$d')
-            
-            echo "HTTP Status Code: $HTTP_CODE"
-            echo "Response: $CONTENT"
-          else
-            echo "Gitleaks rapport aanmaken mislukt of is leeg. Uploaden van leeg rapport naar DefectDojo..."
-            
-            # Maak een leeg rapport voor DefectDojo om bestaande bevindingen te sluiten
-            echo "[]" > empty-gitleaks.json
-            
-            RESPONSE=$(curl -w "\n%{http_code}" -X POST \
-              -H "Authorization: Token ${{ secrets.DEFECTDOJO_API_KEY }}" \
-              -F "scan_date=$(date +%Y-%m-%d)" \
-              -F "engagement=${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}" \
-              -F "file=@empty-gitleaks.json" \
-              -F "scan_type=Gitleaks Scan" \
-              -F "close_old_findings=true" \
-              ${{ secrets.DEFECTDOJO_URL }}/api/v2/import-scan/)
-            
-            HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
-            echo "HTTP Status Code voor leeg rapport: $HTTP_CODE"
-          fi
+          echo "HTTP Status Code: $HTTP_CODE"
+          echo "Response: $CONTENT"
         continue-on-error: true
         
-      - name: Display Gitleaks report for GitHub
+      - name: Display Gitleaks Report in GitHub Summary
         run: |
-          if [ -f gitleaks-report.json ] && [ -s gitleaks-report.json ]; then
+          if [ -s gitleaks-results.json ]; then
             echo "## Gitleaks Report" >> $GITHUB_STEP_SUMMARY
-            cat gitleaks-report.json | jq . >> $GITHUB_STEP_SUMMARY
+            cat gitleaks-results.json | jq . >> $GITHUB_STEP_SUMMARY
             echo "Secrets found by Gitleaks. See the report for details."
           else
-            echo "No secrets found by Gitleaks or report generation failed."
+            echo "No secrets found by Gitleaks or report generation failed." >> $GITHUB_STEP_SUMMARY
           fi
         continue-on-error: true
