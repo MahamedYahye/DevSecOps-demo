@@ -497,7 +497,7 @@ on:
 permissions:
   contents: read
   security-events: write
-  actions: read  # Nodig voor artifact downloads
+  actions: read  # Cruciaal voor artifact toegang
 
 env:
   SEMGREP_VERSION: "1.76.0"
@@ -527,10 +527,10 @@ jobs:
         with:
           sarif_file: semgrep.sarif
           
-      - name: Upload Semgrep results
+      - name: Upload Semgrep results (with unique name)
         uses: actions/upload-artifact@v3
         with:
-          name: semgrep-results
+          name: semgrep-results-${{ github.run_id }}
           path: semgrep-results.json
           retention-days: 1
 
@@ -555,10 +555,10 @@ jobs:
             cat gitleaks-report.json | jq . >> $GITHUB_STEP_SUMMARY || echo "Failed to display Gitleaks findings"
           fi
       
-      - name: Upload Gitleaks results
+      - name: Upload Gitleaks results (with unique name)
         uses: actions/upload-artifact@v3
         with:
-          name: gitleaks-results
+          name: gitleaks-results-${{ github.run_id }}
           path: gitleaks-report.json
           retention-days: 1
 
@@ -568,26 +568,56 @@ jobs:
     if: github.event_name == 'push'
     runs-on: self-hosted
     steps:
+      - name: Find artifacts
+        id: find-artifacts
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const { data: artifacts } = await github.rest.actions.listWorkflowRunArtifacts({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: context.runId,
+            });
+            
+            const semgrepArtifact = artifacts.find(a => a.name.startsWith('semgrep-results'));
+            const gitleaksArtifact = artifacts.find(a => a.name.startsWith('gitleaks-results'));
+            
+            if (!semgrepArtifact || !gitleaksArtifact) {
+              core.setFailed('Required artifacts not found');
+            }
+            
+            return {
+              semgrep_id: semgrepArtifact.id,
+              gitleaks_id: gitleaksArtifact.id
+            };
+      
       - name: Download Semgrep results
         uses: actions/download-artifact@v3
         with:
-          name: semgrep-results
+          name: semgrep-results-${{ github.run_id }}
           path: .
       
       - name: Download Gitleaks results
         uses: actions/download-artifact@v3
         with:
-          name: gitleaks-results
+          name: gitleaks-results-${{ github.run_id }}
           path: .
       
-      - name: Verify files exist
+      - name: Verify files
         run: |
-          ls -la
-          [ -f semgrep-results.json ] || echo "Semgrep results missing" && exit 1
-          [ -f gitleaks-report.json ] || echo "Gitleaks results missing" && exit 1
+          if [ ! -f semgrep-results.json ]; then
+            echo "::error::Semgrep results file missing"
+            exit 1
+          fi
+          if [ ! -f gitleaks-report.json ]; then
+            echo "::error::Gitleaks report file missing"
+            exit 1
+          fi
+          echo "Files verified successfully"
       
       - name: Upload to DefectDojo
         run: |
+          # Same upload script as before
           upload_to_defectdojo() {
             local file=$1
             local scan_type=$2
