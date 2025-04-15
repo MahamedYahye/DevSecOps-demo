@@ -399,7 +399,7 @@ permissions:
 # Gemeenschappelijke variabelen
 env:
   DEFECTDOJO_UPLOAD: ${{ github.event_name == 'push' }}
-  SEMGREP_VERSION: "1.49.0"
+  SEMGREP_VERSION: "1.76.0"
   GITLEAKS_VERSION: "v8.16.3"
 
 jobs:
@@ -412,52 +412,43 @@ jobs:
         with:
           fetch-depth: 0
           
-      # SEMGREP SCANNING - één enkele scan
+      # SEMGREP SCANNING - Gebruik standaard mount om problemen te voorkomen
       - name: Run Semgrep
         run: |
-          # Maak een tijdelijke directory voor output
-          mkdir -p semgrep_output
-          
-          # Voer Semgrep uit met output naar een bestand binnen de container
+          # Voer Semgrep uit met standaard mount
           docker run --rm --security-opt=no-new-privileges \
-            -v $(pwd):/src:ro \
-            -v $(pwd)/semgrep_output:/output \
+            -v $(pwd):/src \
             -e SEMGREP_APP_TOKEN=${{ secrets.SEMGREP_APP_TOKEN }} \
             -e SEMGREP_REPO_URL=https://github.com/${{ github.repository }} \
             semgrep/semgrep:${{ env.SEMGREP_VERSION }} \
-            semgrep ci --sarif --output=/output/semgrep.sarif
+            semgrep ci --sarif --output=semgrep.sarif
           
           # Controleer of het bestand bestaat
-          ls -la semgrep_output/
-          
-          # Verplaats naar verwachte locatie
-          mv semgrep_output/semgrep.sarif .
-          
-          # Genereer JSON output voor DefectDojo
-          jq -c '.runs[0].results' semgrep.sarif > semgrep-results.json
+          if [ -f semgrep.sarif ]; then
+            echo "SARIF file created successfully"
+            # Genereer JSON output voor DefectDojo
+            jq -c '.runs[0].results' semgrep.sarif > semgrep-results.json
+          else
+            echo "SARIF file not created!"
+            touch semgrep-results.json  # Lege file maken voor DefectDojo
+          fi
       
       - name: Upload to GitHub Security
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: semgrep.sarif
           
-      # GITLEAKS SCANNING
+      # GITLEAKS SCANNING - Gebruik standaard mount om problemen te voorkomen
       - name: Run Gitleaks
         run: |
-          # Maak output directory
-          mkdir -p gitleaks_output
-          
           # Scan uitvoeren (doorgaan bij secrets gevonden)
           docker run --rm --security-opt=no-new-privileges \
-            -v $(pwd):/path:ro \
-            -v $(pwd)/gitleaks_output:/output \
+            -v $(pwd):/path \
             zricethezav/gitleaks:${{ env.GITLEAKS_VERSION }} detect --source="/path" \
-            --report-format json --report-path=/output/gitleaks-report.json || true
+            --report-format json --report-path=/path/gitleaks-report.json || true
           
           # Controleer of het bestand bestaat
-          if [ -f gitleaks_output/gitleaks-report.json ]; then
-            mv gitleaks_output/gitleaks-report.json .
-          else
+          if [ ! -f gitleaks-report.json ]; then
             echo "[]" > gitleaks-report.json
           fi
           
