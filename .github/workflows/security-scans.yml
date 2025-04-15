@@ -254,13 +254,18 @@ jobs:
           
       - name: Run Gitleaks
         run: |
-          docker run -v $(pwd):/path zricethezav/gitleaks:latest detect --source="/path" -v --report-format json --report-path gitleaks-report.json
+          # Output directly to stdout and capture in file (similar to Semgrep approach)
+          docker run -v $(pwd):/path zricethezav/gitleaks:latest detect --source="/path" -v --report-format json > gitleaks-report.json
+          
+          # Verify file was created
+          ls -la gitleaks-report.json
+          echo "Gitleaks report file size: $(wc -c < gitleaks-report.json) bytes"
         continue-on-error: true
         
       - name: Check for Gitleaks output
         id: check-output
         run: |
-          if [ -f gitleaks-report.json ]; then
+          if [ -f gitleaks-report.json ] && [ "$(cat gitleaks-report.json | jq '. | length')" -gt 0 ]; then
             echo "Gitleaks found potential secrets. See the report for details."
             cat gitleaks-report.json | jq .
             echo "secrets_found=true" >> $GITHUB_OUTPUT
