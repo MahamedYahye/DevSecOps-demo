@@ -252,40 +252,18 @@ jobs:
         with:
           fetch-depth: 0
           
-      - name: Run Gitleaks
-        run: |
-          # Output directly to stdout and capture in file (similar to Semgrep approach)
-          docker run -v $(pwd):/path zricethezav/gitleaks:latest detect --source="/path" -v --report-format json > gitleaks-report.json
-          
-          # Verify file was created
-          ls -la gitleaks-report.json
-          echo "Gitleaks report file size: $(wc -c < gitleaks-report.json) bytes"
-        continue-on-error: true
-        
-      - name: Check for Gitleaks output
-        id: check-output
-        run: |
-          if [ -f gitleaks-report.json ] && [ "$(cat gitleaks-report.json | jq '. | length')" -gt 0 ]; then
-            echo "Gitleaks found potential secrets. See the report for details."
-            cat gitleaks-report.json | jq .
-            echo "secrets_found=true" >> $GITHUB_OUTPUT
-          else
-            echo "No secrets found by Gitleaks."
-            echo "secrets_found=false" >> $GITHUB_OUTPUT
-          fi
-          
-      - name: Display Gitleaks report
-        if: steps.check-output.outputs.secrets_found == 'true'
-        run: |
-          echo "## Gitleaks Report" >> $GITHUB_STEP_SUMMARY
-          cat gitleaks-report.json | jq -r >> $GITHUB_STEP_SUMMARY
-          
-      - name: Upload Gitleaks to DefectDojo
+      - name: Run Gitleaks and Upload to DefectDojo
         if: github.event_name == 'push'
         run: |
-          echo "Uploading Gitleaks results to DefectDojo..."
+          echo "Running Gitleaks and uploading results to DefectDojo..."
           
-          if [ -f gitleaks-report.json ]; then
+          # Voer Gitleaks uit in gedeeld volume met expliciet outputpad
+          docker run -v $(pwd):/path zricethezav/gitleaks:latest detect --source="/path" --report-format json --report-path=/path/gitleaks-report.json
+          
+          # Check of het rapport is gegenereerd
+          if [ -f gitleaks-report.json ] && [ -s gitleaks-report.json ]; then
+            echo "Gitleaks rapport gegenereerd, uploaden naar DefectDojo..."
+            
             RESPONSE=$(curl -w "\n%{http_code}" -X POST \
               -H "Authorization: Token ${{ secrets.DEFECTDOJO_API_KEY }}" \
               -F "scan_date=$(date +%Y-%m-%d)" \
@@ -299,15 +277,11 @@ jobs:
             CONTENT=$(echo "$RESPONSE" | sed '$d')
             
             echo "HTTP Status Code: $HTTP_CODE"
-            echo "Response content: $CONTENT"
-            
-            if [ "$HTTP_CODE" -ne 201 ] && [ "$HTTP_CODE" -ne 200 ]; then
-              echo "Failed to upload Gitleaks results to DefectDojo"
-            else
-              echo "Successfully uploaded Gitleaks results to DefectDojo"
-            fi
+            echo "Response: $CONTENT"
           else
-            echo "gitleaks-report.json file not found! Creating empty report for DefectDojo."
+            echo "Gitleaks rapport aanmaken mislukt of is leeg. Uploaden van leeg rapport naar DefectDojo..."
+            
+            # Maak een leeg rapport voor DefectDojo om bestaande bevindingen te sluiten
             echo "[]" > empty-gitleaks.json
             
             RESPONSE=$(curl -w "\n%{http_code}" -X POST \
@@ -320,6 +294,17 @@ jobs:
               ${{ secrets.DEFECTDOJO_URL }}/api/v2/import-scan/)
             
             HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
-            echo "HTTP Status Code for empty report: $HTTP_CODE"
+            echo "HTTP Status Code voor leeg rapport: $HTTP_CODE"
+          fi
+        continue-on-error: true
+        
+      - name: Display Gitleaks report for GitHub
+        run: |
+          if [ -f gitleaks-report.json ] && [ -s gitleaks-report.json ]; then
+            echo "## Gitleaks Report" >> $GITHUB_STEP_SUMMARY
+            cat gitleaks-report.json | jq . >> $GITHUB_STEP_SUMMARY
+            echo "Secrets found by Gitleaks. See the report for details."
+          else
+            echo "No secrets found by Gitleaks or report generation failed."
           fi
         continue-on-error: true
