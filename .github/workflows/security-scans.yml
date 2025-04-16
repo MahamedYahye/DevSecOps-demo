@@ -527,7 +527,6 @@ jobs:
           else
             echo "Warning: Some Semgrep output files are missing"
             echo "scan_status=incomplete" >> $GITHUB_OUTPUT
-          fi
       - name: Upload to GitHub Security
         uses: github/codeql-action/upload-sarif@v3
         with:
