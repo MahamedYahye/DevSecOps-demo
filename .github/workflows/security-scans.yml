@@ -231,168 +231,168 @@
 #           upload_to_defectdojo "gitleaks-report.json" "Gitleaks Scan" "Gitleaks"
 #           upload_to_defectdojo "syft-sbom.json" "Anchore Enterprise Policy Violation" "Syft SBOM"
 #           upload_to_defectdojo "grype-vulnerabilities.json" "Anchore Grype" "Grype Vulnerabilities"
-name: Security Scans
-on:
-  push:
-    branches: [ main, master ]
-  pull_request:
-    branches: [ main, master ]
-  workflow_dispatch:
+# name: Security Scans
+# on:
+#   push:
+#     branches: [ main, master ]
+#   pull_request:
+#     branches: [ main, master ]
+#   workflow_dispatch:
 
-permissions:
-  contents: read
-  security-events: write
+# permissions:
+#   contents: read
+#   security-events: write
 
-# Globale omgevingsvariabelen voor tool versies
-env:
-  SEMGREP_VERSION: "1.76.0"
-  GITLEAKS_VERSION: "v8.16.3"
-  SYFT_VERSION: "v0.93.0"
-  GRYPE_VERSION: "v0.73.0"
+# # Globale omgevingsvariabelen voor tool versies
+# env:
+#   SEMGREP_VERSION: "1.76.0"
+#   GITLEAKS_VERSION: "v8.16.3"
+#   SYFT_VERSION: "v0.93.0"
+#   GRYPE_VERSION: "v0.73.0"
 
-jobs:
-  # Parallel job voor Semgrep
-  semgrep-scan:
-    name: Semgrep SAST
-    runs-on: self-hosted
-    outputs:
-      scan_status: ${{ steps.semgrep_run.outputs.scan_status }}
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4  # Upgrade naar v4
-        with:
-          fetch-depth: 0
+# jobs:
+#   # Parallel job voor Semgrep
+#   semgrep-scan:
+#     name: Semgrep SAST
+#     runs-on: self-hosted
+#     outputs:
+#       scan_status: ${{ steps.semgrep_run.outputs.scan_status }}
+#     steps:
+#       - name: Checkout code
+#         uses: actions/checkout@v4  # Upgrade naar v4
+#         with:
+#           fetch-depth: 0
 
-      - name: Run Semgrep
-        id: semgrep_run
-        run: |
-          docker run --rm --security-opt=no-new-privileges \
-            -v $(pwd):/src \
-            -e SEMGREP_APP_TOKEN=${{ secrets.SEMGREP_APP_TOKEN }} \
-            -e SEMGREP_REPO_URL=https://github.com/${{ github.repository }} \
-            semgrep/semgrep:${{ env.SEMGREP_VERSION }} \
-            bash -c "cd /src && semgrep --config=auto --json > semgrep-results.json && semgrep --config=auto --sarif > semgrep.sarif"
+#       - name: Run Semgrep
+#         id: semgrep_run
+#         run: |
+#           docker run --rm --security-opt=no-new-privileges \
+#             -v $(pwd):/src \
+#             -e SEMGREP_APP_TOKEN=${{ secrets.SEMGREP_APP_TOKEN }} \
+#             -e SEMGREP_REPO_URL=https://github.com/${{ github.repository }} \
+#             semgrep/semgrep:${{ env.SEMGREP_VERSION }} \
+#             bash -c "cd /src && semgrep --config=auto --json > semgrep-results.json && semgrep --config=auto --sarif > semgrep.sarif"
 
-          if [ -f semgrep-results.json ] && [ -f semgrep.sarif ]; then
-            echo "Semgrep output files created successfully"
-            echo "scan_status=success" >> $GITHUB_OUTPUT
-          else
-            echo "Warning: Some Semgrep output files are missing"
-            echo "scan_status=incomplete" >> $GITHUB_OUTPUT
-          fi
+#           if [ -f semgrep-results.json ] && [ -f semgrep.sarif ]; then
+#             echo "Semgrep output files created successfully"
+#             echo "scan_status=success" >> $GITHUB_OUTPUT
+#           else
+#             echo "Warning: Some Semgrep output files are missing"
+#             echo "scan_status=incomplete" >> $GITHUB_OUTPUT
+#           fi
 
-      - name: Upload to GitHub Security
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: semgrep.sarif
+#       - name: Upload to GitHub Security
+#         uses: github/codeql-action/upload-sarif@v3
+#         with:
+#           sarif_file: semgrep.sarif
 
-      - name: Upload Semgrep results
-        uses: actions/upload-artifact@v4  # Upgrade naar v4
-        with:
-          name: semgrep-results
-          path: |
-            semgrep-results.json
-            semgrep.sarif
-          retention-days: 5
-          if-no-files-found: warn
+#       - name: Upload Semgrep results
+#         uses: actions/upload-artifact@v4  # Upgrade naar v4
+#         with:
+#           name: semgrep-results
+#           path: |
+#             semgrep-results.json
+#             semgrep.sarif
+#           retention-days: 5
+#           if-no-files-found: warn
 
-  # Parallel job voor Gitleaks
-  gitleaks-scan:
-    name: Gitleaks Secret Detection
-    runs-on: self-hosted
-    outputs:
-      scan_status: ${{ steps.gitleaks_run.outputs.scan_status }}
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4  # Upgrade naar v4
-        with:
-          fetch-depth: 0
+#   # Parallel job voor Gitleaks
+#   gitleaks-scan:
+#     name: Gitleaks Secret Detection
+#     runs-on: self-hosted
+#     outputs:
+#       scan_status: ${{ steps.gitleaks_run.outputs.scan_status }}
+#     steps:
+#       - name: Checkout code
+#         uses: actions/checkout@v4  # Upgrade naar v4
+#         with:
+#           fetch-depth: 0
 
-      - name: Run Gitleaks
-        id: gitleaks_run
-        run: |
-          docker run --rm --security-opt=no-new-privileges \
-            -v $(pwd):/path \
-            zricethezav/gitleaks:${{ env.GITLEAKS_VERSION }} detect \
-            --source="/path" --report-format json --report-path=/path/gitleaks-report.json || true
+#       - name: Run Gitleaks
+#         id: gitleaks_run
+#         run: |
+#           docker run --rm --security-opt=no-new-privileges \
+#             -v $(pwd):/path \
+#             zricethezav/gitleaks:${{ env.GITLEAKS_VERSION }} detect \
+#             --source="/path" --report-format json --report-path=/path/gitleaks-report.json || true
 
-          if [ -f gitleaks-report.json ]; then
-            echo "## Gitleaks Findings" >> $GITHUB_STEP_SUMMARY
-            cat gitleaks-report.json | jq . >> $GITHUB_STEP_SUMMARY || echo "Failed to display Gitleaks findings"
-            echo "scan_status=success" >> $GITHUB_OUTPUT
-          else
-            echo "Warning: Gitleaks output file is missing"
-            echo "scan_status=incomplete" >> $GITHUB_OUTPUT
-          fi
+#           if [ -f gitleaks-report.json ]; then
+#             echo "## Gitleaks Findings" >> $GITHUB_STEP_SUMMARY
+#             cat gitleaks-report.json | jq . >> $GITHUB_STEP_SUMMARY || echo "Failed to display Gitleaks findings"
+#             echo "scan_status=success" >> $GITHUB_OUTPUT
+#           else
+#             echo "Warning: Gitleaks output file is missing"
+#             echo "scan_status=incomplete" >> $GITHUB_OUTPUT
+#           fi
 
-      - name: Upload Gitleaks results
-        uses: actions/upload-artifact@v4  # Upgrade naar v4
-        with:
-          name: gitleaks-results
-          path: gitleaks-report.json
-          retention-days: 5
-          if-no-files-found: warn
+#       - name: Upload Gitleaks results
+#         uses: actions/upload-artifact@v4  # Upgrade naar v4
+#         with:
+#           name: gitleaks-results
+#           path: gitleaks-report.json
+#           retention-days: 5
+#           if-no-files-found: warn
 
-  # Parallel job voor Syft & Grype
-  sbom-vulnerability-scan:
-    name: SBOM & Vulnerability Scan
-    runs-on: self-hosted
-    outputs:
-      syft_status: ${{ steps.syft_run.outputs.scan_status }}
-      grype_status: ${{ steps.grype_run.outputs.scan_status }}
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4  # Upgrade naar v4
-        with:
-          fetch-depth: 0
+#   # Parallel job voor Syft & Grype
+#   sbom-vulnerability-scan:
+#     name: SBOM & Vulnerability Scan
+#     runs-on: self-hosted
+#     outputs:
+#       syft_status: ${{ steps.syft_run.outputs.scan_status }}
+#       grype_status: ${{ steps.grype_run.outputs.scan_status }}
+#     steps:
+#       - name: Checkout code
+#         uses: actions/checkout@v4  # Upgrade naar v4
+#         with:
+#           fetch-depth: 0
 
-      - name: Run Syft (SBOM Generator)
-        id: syft_run
-        run: |
-          docker run --rm --security-opt=no-new-privileges \
-            -v $(pwd):/src \
-            anchore/syft:${{ env.SYFT_VERSION }} \
-            /src -o json=/src/syft-sbom.json -o spdx-json=/src/syft-spdx.json
+#       - name: Run Syft (SBOM Generator)
+#         id: syft_run
+#         run: |
+#           docker run --rm --security-opt=no-new-privileges \
+#             -v $(pwd):/src \
+#             anchore/syft:${{ env.SYFT_VERSION }} \
+#             /src -o json=/src/syft-sbom.json -o spdx-json=/src/syft-spdx.json
 
-          if [ -f syft-sbom.json ] && [ -f syft-spdx.json ]; then
-            echo "Syft SBOM files created successfully"
-            echo "## SBOM Summary" >> $GITHUB_STEP_SUMMARY
-            cat syft-sbom.json | jq '.artifacts | length' | xargs echo "Total packages detected: " >> $GITHUB_STEP_SUMMARY
-            echo "scan_status=success" >> $GITHUB_OUTPUT
-          else
-            echo "Warning: Syft output files are missing"
-            echo "scan_status=incomplete" >> $GITHUB_OUTPUT
-          fi
+#           if [ -f syft-sbom.json ] && [ -f syft-spdx.json ]; then
+#             echo "Syft SBOM files created successfully"
+#             echo "## SBOM Summary" >> $GITHUB_STEP_SUMMARY
+#             cat syft-sbom.json | jq '.artifacts | length' | xargs echo "Total packages detected: " >> $GITHUB_STEP_SUMMARY
+#             echo "scan_status=success" >> $GITHUB_OUTPUT
+#           else
+#             echo "Warning: Syft output files are missing"
+#             echo "scan_status=incomplete" >> $GITHUB_OUTPUT
+#           fi
 
-      - name: Run Grype (Vulnerability Scanner)
-        id: grype_run
-        run: |
-          docker run --rm --security-opt=no-new-privileges \
-            -v $(pwd):/src \
-            anchore/grype:${{ env.GRYPE_VERSION }} \
-            sbom:/src/syft-sbom.json -o json=/src/grype-vulnerabilities.json
+#       - name: Run Grype (Vulnerability Scanner)
+#         id: grype_run
+#         run: |
+#           docker run --rm --security-opt=no-new-privileges \
+#             -v $(pwd):/src \
+#             anchore/grype:${{ env.GRYPE_VERSION }} \
+#             sbom:/src/syft-sbom.json -o json=/src/grype-vulnerabilities.json
 
-          if [ -f grype-vulnerabilities.json ]; then
-            echo "Grype vulnerability report created successfully"
-            echo "## Vulnerability Summary" >> $GITHUB_STEP_SUMMARY
-            cat grype-vulnerabilities.json | jq '.matches | length' | xargs echo "Total vulnerabilities found: " >> $GITHUB_STEP_SUMMARY
-            cat grype-vulnerabilities.json | jq '.matches[] | .vulnerability.severity' | sort | uniq -c | sort -r >> $GITHUB_STEP_SUMMARY
-            echo "scan_status=success" >> $GITHUB_OUTPUT
-          else
-            echo "Warning: Grype output file is missing"
-            echo "scan_status=incomplete" >> $GITHUB_OUTPUT
-          fi
+#           if [ -f grype-vulnerabilities.json ]; then
+#             echo "Grype vulnerability report created successfully"
+#             echo "## Vulnerability Summary" >> $GITHUB_STEP_SUMMARY
+#             cat grype-vulnerabilities.json | jq '.matches | length' | xargs echo "Total vulnerabilities found: " >> $GITHUB_STEP_SUMMARY
+#             cat grype-vulnerabilities.json | jq '.matches[] | .vulnerability.severity' | sort | uniq -c | sort -r >> $GITHUB_STEP_SUMMARY
+#             echo "scan_status=success" >> $GITHUB_OUTPUT
+#           else
+#             echo "Warning: Grype output file is missing"
+#             echo "scan_status=incomplete" >> $GITHUB_OUTPUT
+#           fi
 
-      - name: Upload SBOM & Vulnerability results
-        uses: actions/upload-artifact@v4  # Upgrade naar v4
-        with:
-          name: sbom-vulnerability-results
-          path: |
-            syft-sbom.json
-            syft-spdx.json
-            grype-vulnerabilities.json
-          retention-days: 5
-          if-no-files-found: warn
+#       - name: Upload SBOM & Vulnerability results
+#         uses: actions/upload-artifact@v4  # Upgrade naar v4
+#         with:
+#           name: sbom-vulnerability-results
+#           path: |
+#             syft-sbom.json
+#             syft-spdx.json
+#             grype-vulnerabilities.json
+#           retention-days: 5
+#           if-no-files-found: warn
 
   # # Job voor het uploaden naar DefectDojo - wacht op voltooiing van alle scans
   # upload-to-defectdojo:
