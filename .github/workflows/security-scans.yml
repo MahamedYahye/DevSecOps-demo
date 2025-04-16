@@ -406,8 +406,23 @@ jobs:
       SYFT_STATUS: ${{ needs.sbom-vulnerability-scan.outputs.syft_status }}
       GRYPE_STATUS: ${{ needs.sbom-vulnerability-scan.outputs.grype_status }}
     steps:
-      - name: Download all scan results
+      - name: Download Semgrep results
         uses: actions/download-artifact@v3
+        with:
+          name: semgrep-results
+          path: semgrep-results
+          
+      - name: Download Gitleaks results
+        uses: actions/download-artifact@v3
+        with:
+          name: gitleaks-results
+          path: gitleaks-results
+          
+      - name: Download SBOM & Vulnerability results
+        uses: actions/download-artifact@v3
+        with:
+          name: sbom-vulnerability-results
+          path: sbom-vulnerability-results
         
       - name: Report scan status
         run: |
