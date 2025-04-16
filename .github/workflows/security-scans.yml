@@ -259,10 +259,10 @@ jobs:
       scan_status: ${{ steps.semgrep_run.outputs.scan_status }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4  # Upgrade naar v4
         with:
           fetch-depth: 0
-          
+
       - name: Run Semgrep
         id: semgrep_run
         run: |
@@ -272,7 +272,7 @@ jobs:
             -e SEMGREP_REPO_URL=https://github.com/${{ github.repository }} \
             semgrep/semgrep:${{ env.SEMGREP_VERSION }} \
             bash -c "cd /src && semgrep --config=auto --json > semgrep-results.json && semgrep --config=auto --sarif > semgrep.sarif"
-          
+
           if [ -f semgrep-results.json ] && [ -f semgrep.sarif ]; then
             echo "Semgrep output files created successfully"
             echo "scan_status=success" >> $GITHUB_OUTPUT
@@ -280,14 +280,14 @@ jobs:
             echo "Warning: Some Semgrep output files are missing"
             echo "scan_status=incomplete" >> $GITHUB_OUTPUT
           fi
-          
+
       - name: Upload to GitHub Security
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: semgrep.sarif
-          
+
       - name: Upload Semgrep results
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4  # Upgrade naar v4
         with:
           name: semgrep-results
           path: |
@@ -304,10 +304,10 @@ jobs:
       scan_status: ${{ steps.gitleaks_run.outputs.scan_status }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4  # Upgrade naar v4
         with:
           fetch-depth: 0
-          
+
       - name: Run Gitleaks
         id: gitleaks_run
         run: |
@@ -315,7 +315,7 @@ jobs:
             -v $(pwd):/path \
             zricethezav/gitleaks:${{ env.GITLEAKS_VERSION }} detect \
             --source="/path" --report-format json --report-path=/path/gitleaks-report.json || true
-            
+
           if [ -f gitleaks-report.json ]; then
             echo "## Gitleaks Findings" >> $GITHUB_STEP_SUMMARY
             cat gitleaks-report.json | jq . >> $GITHUB_STEP_SUMMARY || echo "Failed to display Gitleaks findings"
@@ -324,9 +324,9 @@ jobs:
             echo "Warning: Gitleaks output file is missing"
             echo "scan_status=incomplete" >> $GITHUB_OUTPUT
           fi
-          
+
       - name: Upload Gitleaks results
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4  # Upgrade naar v4
         with:
           name: gitleaks-results
           path: gitleaks-report.json
@@ -342,10 +342,10 @@ jobs:
       grype_status: ${{ steps.grype_run.outputs.scan_status }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4  # Upgrade naar v4
         with:
           fetch-depth: 0
-          
+
       - name: Run Syft (SBOM Generator)
         id: syft_run
         run: |
@@ -353,7 +353,7 @@ jobs:
             -v $(pwd):/src \
             anchore/syft:${{ env.SYFT_VERSION }} \
             /src -o json=/src/syft-sbom.json -o spdx-json=/src/syft-spdx.json
-            
+
           if [ -f syft-sbom.json ] && [ -f syft-spdx.json ]; then
             echo "Syft SBOM files created successfully"
             echo "## SBOM Summary" >> $GITHUB_STEP_SUMMARY
@@ -363,7 +363,7 @@ jobs:
             echo "Warning: Syft output files are missing"
             echo "scan_status=incomplete" >> $GITHUB_OUTPUT
           fi
-          
+
       - name: Run Grype (Vulnerability Scanner)
         id: grype_run
         run: |
@@ -371,7 +371,7 @@ jobs:
             -v $(pwd):/src \
             anchore/grype:${{ env.GRYPE_VERSION }} \
             sbom:/src/syft-sbom.json -o json=/src/grype-vulnerabilities.json
-            
+
           if [ -f grype-vulnerabilities.json ]; then
             echo "Grype vulnerability report created successfully"
             echo "## Vulnerability Summary" >> $GITHUB_STEP_SUMMARY
@@ -382,9 +382,9 @@ jobs:
             echo "Warning: Grype output file is missing"
             echo "scan_status=incomplete" >> $GITHUB_OUTPUT
           fi
-          
+
       - name: Upload SBOM & Vulnerability results
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4  # Upgrade naar v4
         with:
           name: sbom-vulnerability-results
           path: |
@@ -407,23 +407,23 @@ jobs:
       GRYPE_STATUS: ${{ needs.sbom-vulnerability-scan.outputs.grype_status }}
     steps:
       - name: Download Semgrep results
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4  # Upgrade naar v4
         with:
           name: semgrep-results
           path: semgrep-results
-          
+
       - name: Download Gitleaks results
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4  # Upgrade naar v4
         with:
           name: gitleaks-results
           path: gitleaks-results
-          
+
       - name: Download SBOM & Vulnerability results
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4  # Upgrade naar v4
         with:
           name: sbom-vulnerability-results
           path: sbom-vulnerability-results
-        
+
       - name: Report scan status
         run: |
           echo "## Scan Statuses" >> $GITHUB_STEP_SUMMARY
@@ -431,7 +431,7 @@ jobs:
           echo "- Gitleaks: $GITLEAKS_STATUS" >> $GITHUB_STEP_SUMMARY
           echo "- Syft: $SYFT_STATUS" >> $GITHUB_STEP_SUMMARY
           echo "- Grype: $GRYPE_STATUS" >> $GITHUB_STEP_SUMMARY
-        
+
       - name: Upload to DefectDojo
         run: |
           # Functie voor uploads
@@ -440,17 +440,17 @@ jobs:
             local scan_type=$2
             local description=$3
             local status=$4
-            
+
             if [ "$status" != "success" ]; then
               echo "Skipping $description upload as the scan status is not successful"
               return 1
             fi
-            
+
             if [ ! -f "$file" ]; then
               echo "$file not found, skipping upload"
               return 1
             fi
-            
+
             echo "Uploading $description to DefectDojo..."
             RESULT=$(curl -s -w "\n%{http_code}" -X POST \
               -H "Authorization: Token ${{ secrets.DEFECTDOJO_API_KEY }}" \
@@ -464,7 +464,7 @@ jobs:
             CONTENT=$(echo "$RESULT" | sed '$d')
             echo "$description upload status: $STATUS_CODE"
             echo "Response: $CONTENT"
-            
+
             # Add to GitHub summary
             echo "## $description Upload" >> $GITHUB_STEP_SUMMARY
             echo "- Status code: $STATUS_CODE" >> $GITHUB_STEP_SUMMARY
@@ -475,7 +475,7 @@ jobs:
               echo "- Error: $CONTENT" >> $GITHUB_STEP_SUMMARY
             fi
           }
-          
+
           # Execute uploads with status check
           upload_to_defectdojo "semgrep-results/semgrep-results.json" "Semgrep JSON Report" "Semgrep" "$SEMGREP_STATUS"
           upload_to_defectdojo "gitleaks-results/gitleaks-report.json" "Gitleaks Scan" "Gitleaks" "$GITLEAKS_STATUS"
