@@ -494,13 +494,11 @@ on:
     branches: [ main, master ]
   workflow_dispatch:
 
-# Expliciete permissies volgens principle of least privilege
 permissions:
   contents: read
   security-events: write
   actions: read  # Nodig voor artifact upload/download
 
-# Gepinde versies voor betere security en reproduceerbaarheid
 env:
   SEMGREP_VERSION: "latest"  # Pas aan naar specifieke versie in productie
   GITLEAKS_VERSION: "latest" # Pas aan naar specifieke versie in productie
@@ -515,8 +513,7 @@ jobs:
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
-            
-      # Scan voor beveiligingsproblemen met veilige containeropties
+
       - name: Run Semgrep
         run: |
           # Voor DefectDojo (JSON)
@@ -535,18 +532,17 @@ jobs:
             semgrep/semgrep:${{ env.SEMGREP_VERSION }} \
             bash -c "cd /src && semgrep ci --sarif > /output/semgrep.sarif"
       
-      # Upload naar GitHub Security Dashboard
       - name: Upload to GitHub Security
         uses: github/codeql-action/upload-sarif@v2
         with:
           sarif_file: semgrep.sarif
-          
-      # Bewaar resultaten voor DefectDojo
+
+      # Upload JSON-resultaat als artifact
       - name: Save Semgrep results
         uses: actions/upload-artifact@v1
         with:
-          name: semgrep-results
-          path: semgrep-results.json
+          name: semgrep-results       # <-- artifactnaam
+          path: semgrep-results.json  # <-- bestand dat je wilt opslaan
 
   # Gitleaks voor het vinden van secrets
   gitleaks-scan:
@@ -558,7 +554,6 @@ jobs:
         with:
           fetch-depth: 0
             
-      # Scan voor secrets/credentials met veilige containeropties
       - name: Run Gitleaks
         run: |
           docker run --rm --security-opt=no-new-privileges \
@@ -572,12 +567,11 @@ jobs:
             echo "[]" > gitleaks-report.json
           fi
       
-      # Bewaar resultaten voor DefectDojo
       - name: Save Gitleaks results
         uses: actions/upload-artifact@v1
         with:
-          name: gitleaks-results
-          path: gitleaks-report.json
+          name: gitleaks-results      # <-- artifactnaam
+          path: gitleaks-report.json  # <-- bestand dat je wilt opslaan
 
   # DefectDojo integratie - draait alleen bij push naar main/master
   upload-to-defectdojo:
@@ -586,11 +580,19 @@ jobs:
     if: github.event_name == 'push'
     runs-on: self-hosted
     steps:
-      # Verzamel alle resultaten
-      - name: Download scan results
+      # Download de twee artifacts expliciet
+      - name: Download Semgrep results
         uses: actions/download-artifact@v1
-      
-      # Stuur resultaten naar DefectDojo met verbeterde security
+        with:
+          name: semgrep-results         # zelfde naam als in 'Save Semgrep results'
+          path: ./semgrep-artifact      # map waar je het bestand naartoe download
+
+      - name: Download Gitleaks results
+        uses: actions/download-artifact@v1
+        with:
+          name: gitleaks-results        # zelfde naam als in 'Save Gitleaks results'
+          path: ./gitleaks-artifact     # map waar je het bestand naartoe download
+
       - name: Upload to DefectDojo
         run: |
           # Upload Semgrep resultaten
@@ -599,7 +601,7 @@ jobs:
             -H "Authorization: Token ${{ secrets.DEFECTDOJO_API_KEY }}" \
             -F "scan_date=$(date +%Y-%m-%d)" \
             -F "engagement=${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}" \
-            -F "file=@semgrep-results/semgrep-results.json" \
+            -F "file=@./semgrep-artifact/semgrep-results.json" \
             -F "scan_type=Semgrep JSON Report" \
             -F "close_old_findings=true" \
             -o /dev/null \
@@ -611,7 +613,7 @@ jobs:
             -H "Authorization: Token ${{ secrets.DEFECTDOJO_API_KEY }}" \
             -F "scan_date=$(date +%Y-%m-%d)" \
             -F "engagement=${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}" \
-            -F "file=@gitleaks-results/gitleaks-report.json" \
+            -F "file=@./gitleaks-artifact/gitleaks-report.json" \
             -F "scan_type=Gitleaks Scan" \
             -F "close_old_findings=true" \
             -o /dev/null \
