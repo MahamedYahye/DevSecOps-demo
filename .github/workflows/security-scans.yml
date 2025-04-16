@@ -702,5 +702,5 @@ jobs:
           }
           upload_to_defectdojo "semgrep-results/semgrep-results.json" "Semgrep JSON Report" "Semgrep" "$SEMGREP_STATUS"
           upload_to_defectdojo "gitleaks-results/gitleaks-report.json" "Gitleaks Scan" "Gitleaks" "$GITLEAKS_STATUS"
-          upload_to_defectdojo "sbom-vulnerability-results/syft-spdx.json" "SPDX Scan" "Syft SBOM" "$SYFT_STATUS"
-          upload_to_defectdojo "sbom-vulnerability-results/grype-vulnerabilities.json" "Anchore Grype" "Grype Vulnerabilities" "$GRYPE_STATUS"
+          upload_to_defectdojo "sbom-vulnerability-results/syft-sbom.json" "Syft JSON" "Syft SBOM" "$SYFT_STATUS"
+          upload_to_defectdojo "sbom-vulnerability-results/grype-vulnerabilities.json" "Grype JSON" "Grype Vulnerabilities" "$GRYPE_STATUS"
