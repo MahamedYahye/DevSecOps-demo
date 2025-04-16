@@ -243,8 +243,8 @@ permissions:
   contents: read
   security-events: write
 
+# Globale omgevingsvariabelen voor tool versies
 env:
-  DEFECTDOJO_UPLOAD: ${{ github.event_name == 'push' }}
   SEMGREP_VERSION: "1.76.0"
   GITLEAKS_VERSION: "v8.16.3"
   SYFT_VERSION: "v0.93.0"
@@ -255,6 +255,8 @@ jobs:
   semgrep-scan:
     name: Semgrep SAST
     runs-on: self-hosted
+    outputs:
+      scan_status: ${{ steps.semgrep_run.outputs.scan_status }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -262,6 +264,7 @@ jobs:
           fetch-depth: 0
           
       - name: Run Semgrep
+        id: semgrep_run
         run: |
           docker run --rm --security-opt=no-new-privileges \
             -v $(pwd):/src \
@@ -272,8 +275,10 @@ jobs:
           
           if [ -f semgrep-results.json ] && [ -f semgrep.sarif ]; then
             echo "Semgrep output files created successfully"
+            echo "scan_status=success" >> $GITHUB_OUTPUT
           else
             echo "Warning: Some Semgrep output files are missing"
+            echo "scan_status=incomplete" >> $GITHUB_OUTPUT
           fi
           
       - name: Upload to GitHub Security
@@ -282,7 +287,6 @@ jobs:
           sarif_file: semgrep.sarif
           
       - name: Upload Semgrep results
-        if: always()
         uses: actions/upload-artifact@v3
         with:
           name: semgrep-results
@@ -290,11 +294,14 @@ jobs:
             semgrep-results.json
             semgrep.sarif
           retention-days: 5
+          if-no-files-found: warn
 
   # Parallel job voor Gitleaks
   gitleaks-scan:
     name: Gitleaks Secret Detection
     runs-on: self-hosted
+    outputs:
+      scan_status: ${{ steps.gitleaks_run.outputs.scan_status }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -302,6 +309,7 @@ jobs:
           fetch-depth: 0
           
       - name: Run Gitleaks
+        id: gitleaks_run
         run: |
           docker run --rm --security-opt=no-new-privileges \
             -v $(pwd):/path \
@@ -311,20 +319,27 @@ jobs:
           if [ -f gitleaks-report.json ]; then
             echo "## Gitleaks Findings" >> $GITHUB_STEP_SUMMARY
             cat gitleaks-report.json | jq . >> $GITHUB_STEP_SUMMARY || echo "Failed to display Gitleaks findings"
+            echo "scan_status=success" >> $GITHUB_OUTPUT
+          else
+            echo "Warning: Gitleaks output file is missing"
+            echo "scan_status=incomplete" >> $GITHUB_OUTPUT
           fi
           
       - name: Upload Gitleaks results
-        if: always()
         uses: actions/upload-artifact@v3
         with:
           name: gitleaks-results
           path: gitleaks-report.json
           retention-days: 5
+          if-no-files-found: warn
 
   # Parallel job voor Syft & Grype
   sbom-vulnerability-scan:
     name: SBOM & Vulnerability Scan
     runs-on: self-hosted
+    outputs:
+      syft_status: ${{ steps.syft_run.outputs.scan_status }}
+      grype_status: ${{ steps.grype_run.outputs.scan_status }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -332,6 +347,7 @@ jobs:
           fetch-depth: 0
           
       - name: Run Syft (SBOM Generator)
+        id: syft_run
         run: |
           docker run --rm --security-opt=no-new-privileges \
             -v $(pwd):/src \
@@ -342,11 +358,14 @@ jobs:
             echo "Syft SBOM files created successfully"
             echo "## SBOM Summary" >> $GITHUB_STEP_SUMMARY
             cat syft-sbom.json | jq '.artifacts | length' | xargs echo "Total packages detected: " >> $GITHUB_STEP_SUMMARY
+            echo "scan_status=success" >> $GITHUB_OUTPUT
           else
             echo "Warning: Syft output files are missing"
+            echo "scan_status=incomplete" >> $GITHUB_OUTPUT
           fi
           
       - name: Run Grype (Vulnerability Scanner)
+        id: grype_run
         run: |
           docker run --rm --security-opt=no-new-privileges \
             -v $(pwd):/src \
@@ -358,12 +377,13 @@ jobs:
             echo "## Vulnerability Summary" >> $GITHUB_STEP_SUMMARY
             cat grype-vulnerabilities.json | jq '.matches | length' | xargs echo "Total vulnerabilities found: " >> $GITHUB_STEP_SUMMARY
             cat grype-vulnerabilities.json | jq '.matches[] | .vulnerability.severity' | sort | uniq -c | sort -r >> $GITHUB_STEP_SUMMARY
+            echo "scan_status=success" >> $GITHUB_OUTPUT
           else
             echo "Warning: Grype output file is missing"
+            echo "scan_status=incomplete" >> $GITHUB_OUTPUT
           fi
           
       - name: Upload SBOM & Vulnerability results
-        if: always()
         uses: actions/upload-artifact@v3
         with:
           name: sbom-vulnerability-results
@@ -372,6 +392,7 @@ jobs:
             syft-spdx.json
             grype-vulnerabilities.json
           retention-days: 5
+          if-no-files-found: warn
 
   # Job voor het uploaden naar DefectDojo - wacht op voltooiing van alle scans
   upload-to-defectdojo:
@@ -379,9 +400,22 @@ jobs:
     needs: [semgrep-scan, gitleaks-scan, sbom-vulnerability-scan]
     if: github.event_name == 'push'
     runs-on: self-hosted
+    env:
+      SEMGREP_STATUS: ${{ needs.semgrep-scan.outputs.scan_status }}
+      GITLEAKS_STATUS: ${{ needs.gitleaks-scan.outputs.scan_status }}
+      SYFT_STATUS: ${{ needs.sbom-vulnerability-scan.outputs.syft_status }}
+      GRYPE_STATUS: ${{ needs.sbom-vulnerability-scan.outputs.grype_status }}
     steps:
       - name: Download all scan results
         uses: actions/download-artifact@v3
+        
+      - name: Report scan status
+        run: |
+          echo "## Scan Statuses" >> $GITHUB_STEP_SUMMARY
+          echo "- Semgrep: $SEMGREP_STATUS" >> $GITHUB_STEP_SUMMARY
+          echo "- Gitleaks: $GITLEAKS_STATUS" >> $GITHUB_STEP_SUMMARY
+          echo "- Syft: $SYFT_STATUS" >> $GITHUB_STEP_SUMMARY
+          echo "- Grype: $GRYPE_STATUS" >> $GITHUB_STEP_SUMMARY
         
       - name: Upload to DefectDojo
         run: |
@@ -390,10 +424,18 @@ jobs:
             local file=$1
             local scan_type=$2
             local description=$3
+            local status=$4
+            
+            if [ "$status" != "success" ]; then
+              echo "Skipping $description upload as the scan status is not successful"
+              return 1
+            fi
+            
             if [ ! -f "$file" ]; then
               echo "$file not found, skipping upload"
               return 1
             fi
+            
             echo "Uploading $description to DefectDojo..."
             RESULT=$(curl -s -w "\n%{http_code}" -X POST \
               -H "Authorization: Token ${{ secrets.DEFECTDOJO_API_KEY }}" \
@@ -407,10 +449,20 @@ jobs:
             CONTENT=$(echo "$RESULT" | sed '$d')
             echo "$description upload status: $STATUS_CODE"
             echo "Response: $CONTENT"
+            
+            # Add to GitHub summary
+            echo "## $description Upload" >> $GITHUB_STEP_SUMMARY
+            echo "- Status code: $STATUS_CODE" >> $GITHUB_STEP_SUMMARY
+            if [ "$STATUS_CODE" == "201" ]; then
+              echo "- Result: Success ✅" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "- Result: Failed ❌" >> $GITHUB_STEP_SUMMARY
+              echo "- Error: $CONTENT" >> $GITHUB_STEP_SUMMARY
+            fi
           }
           
-          # Execute uploads
-          upload_to_defectdojo "semgrep-results/semgrep-results.json" "Semgrep JSON Report" "Semgrep"
-          upload_to_defectdojo "gitleaks-results/gitleaks-report.json" "Gitleaks Scan" "Gitleaks"
-          upload_to_defectdojo "sbom-vulnerability-results/syft-sbom.json" "Anchore Enterprise Policy Violation" "Syft SBOM"
-          upload_to_defectdojo "sbom-vulnerability-results/grype-vulnerabilities.json" "Anchore Grype" "Grype Vulnerabilities"
+          # Execute uploads with status check
+          upload_to_defectdojo "semgrep-results/semgrep-results.json" "Semgrep JSON Report" "Semgrep" "$SEMGREP_STATUS"
+          upload_to_defectdojo "gitleaks-results/gitleaks-report.json" "Gitleaks Scan" "Gitleaks" "$GITLEAKS_STATUS"
+          upload_to_defectdojo "sbom-vulnerability-results/syft-sbom.json" "Anchore Enterprise Policy Violation" "Syft SBOM" "$SYFT_STATUS"
+          upload_to_defectdojo "sbom-vulnerability-results/grype-vulnerabilities.json" "Anchore Grype" "Grype Vulnerabilities" "$GRYPE_STATUS"
