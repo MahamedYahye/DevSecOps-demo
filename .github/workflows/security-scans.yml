@@ -377,7 +377,7 @@ jobs:
   upload-to-defectdojo:
     name: Upload to DefectDojo
     needs: [semgrep-scan, gitleaks-scan, sbom-vulnerability-scan]
-    if: env.DEFECTDOJO_UPLOAD == 'true'
+    if: github.event_name == 'push'
     runs-on: self-hosted
     steps:
       - name: Download all scan results
