@@ -486,133 +486,35 @@
 #           upload_to_defectdojo "semgrep-results.json" "Semgrep JSON Report" "Semgrep"
 #           upload_to_defectdojo "gitleaks-report.json" "Gitleaks Scan" "Gitleaks"
 
-name: Security Scans
-on:
-  push:
-    branches: [ main, master ]
-  pull_request:
-    branches: [ main, master ]
-  workflow_dispatch:
+name: Artifact Example
 
-permissions:
-  contents: read
-  security-events: write
-  actions: read  # Nodig voor artifact upload/download
-
-env:
-  SEMGREP_VERSION: "latest"  # Pas aan naar specifieke versie in productie
-  GITLEAKS_VERSION: "latest" # Pas aan naar specifieke versie in productie
+on: [push]
 
 jobs:
-  # Semgrep voor code security scanning
-  semgrep-scan:
-    name: Semgrep Security Scan
+  build:
     runs-on: self-hosted
     steps:
-      - name: Checkout code
+      - name: Checkout source
         uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
-            
-      - name: Run Semgrep
-        run: |
-          # Voor DefectDojo (JSON)
-          docker run --rm --security-opt=no-new-privileges \
-            -v "$(pwd)":/src:ro \
-            -v "$(pwd)":/output \
-            semgrep/semgrep:${{ env.SEMGREP_VERSION }} \
-            bash -c "cd /src && semgrep --config=auto --json > /output/semgrep-results.json"
-          
-          # Voor GitHub Security (SARIF)
-          docker run --rm --security-opt=no-new-privileges \
-            -v "$(pwd)":/src:ro \
-            -v "$(pwd)":/output \
-            -e SEMGREP_APP_TOKEN=${{ secrets.SEMGREP_APP_TOKEN }} \
-            -e SEMGREP_REPO_URL=https://github.com/${{ github.repository }} \
-            semgrep/semgrep:${{ env.SEMGREP_VERSION }} \
-            bash -c "cd /src && semgrep ci --sarif > /output/semgrep.sarif"
-      
-      - name: Upload to GitHub Security
-        uses: github/codeql-action/upload-sarif@v2
-        with:
-          sarif_file: semgrep.sarif
 
-      - name: Save Semgrep results
-        uses: actions/upload-artifact@v3  # <--- Gebruik @v3 in plaats van @v1
-        with:
-          name: semgrep-results
-          path: semgrep-results.json
+      - name: Create a file to upload
+        run: echo "Hello, world!" > hello.txt
 
-  # Gitleaks voor het vinden van secrets
-  gitleaks-scan:
-    name: Gitleaks Secret Scan
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: example-artifact
+          path: hello.txt
+
+  test:
     runs-on: self-hosted
+    needs: build
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+      - name: Download artifact
+        uses: actions/download-artifact@v3
         with:
-          fetch-depth: 0
-            
-      - name: Run Gitleaks
-        run: |
-          docker run --rm --security-opt=no-new-privileges \
-            -v "$(pwd)":/path:ro \
-            -v "$(pwd)":/output \
-            zricethezav/gitleaks:${{ env.GITLEAKS_VERSION }} \
-            detect --source="/path" --report-format json --report-path=/output/gitleaks-report.json || true
-          
-          # Zorg dat er een rapport is, zelfs als Gitleaks niets vindt
-          if [ ! -f gitleaks-report.json ]; then
-            echo "[]" > gitleaks-report.json
-          fi
-      
-      - name: Save Gitleaks results
-        uses: actions/upload-artifact@v3  # <--- Gebruik @v3 in plaats van @v1
-        with:
-          name: gitleaks-results
-          path: gitleaks-report.json
+          name: example-artifact
+          path: downloaded
 
-  # DefectDojo integratie - draait alleen bij push naar main/master
-  upload-to-defectdojo:
-    name: Upload to DefectDojo
-    needs: [ semgrep-scan, gitleaks-scan ]
-    if: github.event_name == 'push'
-    runs-on: self-hosted
-    steps:
-      - name: Download Semgrep results
-        uses: actions/download-artifact@v3  # <--- Gebruik @v3
-        with:
-          name: semgrep-results
-          path: ./semgrep-artifact
-
-      - name: Download Gitleaks results
-        uses: actions/download-artifact@v3  # <--- Gebruik @v3
-        with:
-          name: gitleaks-results
-          path: ./gitleaks-artifact
-
-      - name: Upload to DefectDojo
-        run: |
-          # Upload Semgrep resultaten
-          echo "Uploading Semgrep findings to DefectDojo..."
-          curl -s -X POST \
-            -H "Authorization: Token ${{ secrets.DEFECTDOJO_API_KEY }}" \
-            -F "scan_date=$(date +%Y-%m-%d)" \
-            -F "engagement=${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}" \
-            -F "file=@./semgrep-artifact/semgrep-results.json" \
-            -F "scan_type=Semgrep JSON Report" \
-            -F "close_old_findings=true" \
-            -o /dev/null \
-            ${{ secrets.DEFECTDOJO_URL }}/api/v2/import-scan/
-            
-          # Upload Gitleaks resultaten
-          echo "Uploading Gitleaks findings to DefectDojo..."
-          curl -s -X POST \
-            -H "Authorization: Token ${{ secrets.DEFECTDOJO_API_KEY }}" \
-            -F "scan_date=$(date +%Y-%m-%d)" \
-            -F "engagement=${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}" \
-            -F "file=@./gitleaks-artifact/gitleaks-report.json" \
-            -F "scan_type=Gitleaks Scan" \
-            -F "close_old_findings=true" \
-            -o /dev/null \
-            ${{ secrets.DEFECTDOJO_URL }}/api/v2/import-scan/
+      - name: Show the downloaded file
+        run: cat downloaded/hello.txt
