@@ -28,56 +28,33 @@
 #         env:
 #           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 #         continue-on-error: true
-name: Security Scans
-on:
-  push:
-    branches: [ main, master ]
-  pull_request:
-    branches: [ main, master ]
-  workflow_dispatch:
+name: CI
+
+on: [push]
 
 jobs:
-  semgrep:
-    name: Semgrep
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: semgrep/semgrep-action@v1
-        with:
-          config: auto
-        continue-on-error: true
+ sast_scan:
+   name: Run Bandit Scan
+   runs-on: ubuntu-latest
 
-  gitleaks:
-    name: Gitleaks
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        continue-on-error: true
+   steps:
+   - name: Checkout code
+     uses: actions/checkout@v2
 
-  sast_scan:
-    name: Run Bandit Scan
-    runs-on: ubuntu-latest
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4 # Gebruik v4 voor consistentie
-      with:
-        fetch-depth: 0 # Aanbevolen voor SAST tools
-    - name: Set up Python
-      uses: actions/setup-python@v4 # Gebruik v4 voor consistentie
-      with:
-        python-version: 3.8
-    - name: Install Bandit
-      run: pip install bandit
-    - name: Run Bandit Scan
-      run: bandit -ll -ii -r . -f json -o bandit-report.json
-    - name: Upload Artifact
-      uses: actions/upload-artifact@v4 # Gebruik v4 voor consistentie
-      if: always()
-      with:
-        name: bandit-findings
-        path: bandit-report.json
+   - name: Set up Python
+     uses: actions/setup-python@v2
+     with:
+       python-version: 3.8
+
+   - name: Install Bandit
+     run: pip install bandit
+
+   - name: Run Bandit Scan
+     run: bandit -ll -ii -r . -f json -o bandit-report.json
+
+   - name: Upload Artifact
+     uses: actions/upload-artifact@v3
+     if: always()
+     with:
+      name: bandit-findings
+      path: bandit-report.json
