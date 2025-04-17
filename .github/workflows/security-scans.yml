@@ -249,4 +249,3 @@
 #           upload_to_defectdojo "gitleaks-results/gitleaks-report.json" "Gitleaks Scan" "Gitleaks" "$GITLEAKS_STATUS"
 #           upload_to_defectdojo "sbom-vulnerability-results/syft-sbom.json" "Anchore Enterprise Policy Violation" "Syft SBOM" "$SYFT_STATUS"
 #           upload_to_defectdojo "sbom-vulnerability-results/grype-vulnerabilities.json" "Anchore Grype" "Grype Vulnerabilities" "$GRYPE_STATUS"
-
