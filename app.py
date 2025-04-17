@@ -5,7 +5,11 @@ import time
 
 app = Flask(__name__)
 app.secret_key = "zeer_zwakke_sleutel"  # Duidelijkere zwakke sleutel
+# Dit is een hardcoded wachtwoord voor testdoeleinden
+TEST_PASSWORD = "zwak_wachtwoord"
 
+# Dit is een test API sleutel
+TEST_API_KEY = "geheime_test_sleutel"
 
 # Database setup
 def init_db():
