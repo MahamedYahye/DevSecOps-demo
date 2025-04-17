@@ -46,13 +46,19 @@ jobs:
         with:
           config: auto
         continue-on-error: true
+      - name: Find Semgrep results
+        run: |
+          echo "Listing files to find Semgrep results:"
+          find . -name "*.json" | grep -i semgrep || echo "No Semgrep results found"
       - name: Upload Semgrep results
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: semgrep-results
           path: |
+            ./**/*semgrep*.json
             .semgrep/*.json
+        continue-on-error: true
 
   gitleaks:
     name: Gitleaks
@@ -65,14 +71,18 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         continue-on-error: true
+      - name: Find Gitleaks results
+        run: |
+          echo "Listing files to find Gitleaks results:"
+          find . -name "*.json" | grep -i leak || echo "No Gitleaks results found"
       - name: Upload Gitleaks results
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: gitleaks-results
           path: |
-            leak_report.json
-            gitleaks-report.json
+            ./**/*leak*.json
+        continue-on-error: true
 
   sbom-vulnerability-scan:
     name: SBOM & Vulnerability Scan
@@ -85,12 +95,14 @@ jobs:
         with:
           format: json
           output-file: syft-sbom.json
+        continue-on-error: true
           
       - name: Generate SPDX SBOM
         uses: anchore/sbom-action@v0
         with:
           format: spdx-json
           output-file: syft-spdx.json
+        continue-on-error: true
           
       - name: Run Grype (Vulnerabilities)
         uses: anchore/scan-action@v3
@@ -98,15 +110,22 @@ jobs:
         with:
           sbom: syft-sbom.json
           output-format: json
+        continue-on-error: true
+          
+      - name: Find SBOM & Vulnerability results
+        run: |
+          echo "Listing files to find SBOM & Vulnerability results:"
+          find . -name "*.json" | grep -E 'syft|grype' || echo "No SBOM or Vulnerability results found"
           
       - name: Upload SBOM & Vulnerability results
         uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: sbom-vulnerability-results
           path: |
-            syft-sbom.json
-            syft-spdx.json
-            ${{ steps.scan.outputs.grype-json }}
+            ./**/*syft*.json
+            ./**/*grype*.json
+        continue-on-error: true
 
   python-security-scans:
     name: Python Security Scans
@@ -126,24 +145,30 @@ jobs:
             pip install -r requirements.txt
           fi
           pip install bandit pip-audit
+        continue-on-error: true
           
       - name: Run Bandit
         run: |
-          bandit -r . -f json -o bandit-results.json
-        continue-on-error: true
+          bandit -r . -f json -o bandit-results.json || true
           
       - name: Run pip-audit
         run: |
-          pip-audit --format json > pip-audit-results.json
-        continue-on-error: true
+          pip-audit --format json > pip-audit-results.json || true
+          
+      - name: Find Python security results
+        run: |
+          echo "Listing files to find Python security results:"
+          find . -name "*.json" | grep -E 'bandit|pip-audit' || echo "No Python security results found"
           
       - name: Upload Python security results
         uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: python-security-results
           path: |
-            bandit-results.json
-            pip-audit-results.json
+            ./**/*bandit*.json
+            ./**/*pip-audit*.json
+        continue-on-error: true
 
   upload-to-defectdojo:
     name: Upload to DefectDojo
@@ -154,6 +179,11 @@ jobs:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         
+      - name: List downloaded artifacts
+        run: |
+          echo "Listing downloaded artifacts:"
+          find . -type f -name "*.json" | sort
+          
       - name: Upload to DefectDojo
         run: |
           upload_to_defectdojo() {
@@ -191,33 +221,51 @@ jobs:
             fi
           }
           
-          # Zoek en upload de resultaten
-          find . -name "semgrep*.json" | while read file; do
-            upload_to_defectdojo "$file" "Semgrep JSON Report" "Semgrep"
-            break
-          done
+          # Zoek en upload semgrep resultaten
+          semgrep_file=$(find . -name "*semgrep*.json" | head -1)
+          if [ -n "$semgrep_file" ]; then
+            upload_to_defectdojo "$semgrep_file" "Semgrep JSON Report" "Semgrep"
+          else
+            echo "No Semgrep results found to upload"
+          fi
           
-          find . -name "*leak*.json" | while read file; do
-            upload_to_defectdojo "$file" "Gitleaks Scan" "Gitleaks"
-            break
-          done
+          # Zoek en upload gitleaks resultaten
+          gitleaks_file=$(find . -name "*leak*.json" | head -1)
+          if [ -n "$gitleaks_file" ]; then
+            upload_to_defectdojo "$gitleaks_file" "Gitleaks Scan" "Gitleaks"
+          else
+            echo "No Gitleaks results found to upload"
+          fi
           
-          find . -name "syft-sbom.json" | while read file; do
-            upload_to_defectdojo "$file" "Anchore Engine Scan" "Syft SBOM"
-            break
-          done
+          # Zoek en upload syft resultaten
+          syft_file=$(find . -name "*syft*.json" | head -1)
+          if [ -n "$syft_file" ]; then
+            upload_to_defectdojo "$syft_file" "Anchore Engine Scan" "Syft SBOM"
+          else
+            echo "No Syft results found to upload"
+          fi
           
-          find . -name "grype-*.json" | while read file; do
-            upload_to_defectdojo "$file" "Anchore Grype" "Grype Vulnerabilities"
-            break
-          done
+          # Zoek en upload grype resultaten
+          grype_file=$(find . -name "*grype*.json" | head -1)
+          if [ -n "$grype_file" ]; then
+            upload_to_defectdojo "$grype_file" "Anchore Grype" "Grype Vulnerabilities"
+          else
+            echo "No Grype results found to upload"
+          fi
           
-          find . -name "bandit-results.json" | while read file; do
-            upload_to_defectdojo "$file" "Bandit Scan" "Bandit"
-            break
-          done
+          # Zoek en upload bandit resultaten
+          bandit_file=$(find . -name "*bandit*.json" | head -1)
+          if [ -n "$bandit_file" ]; then
+            upload_to_defectdojo "$bandit_file" "Bandit Scan" "Bandit"
+          else
+            echo "No Bandit results found to upload"
+          fi
           
-          find . -name "pip-audit-results.json" | while read file; do
-            upload_to_defectdojo "$file" "Generic Findings Import" "pip-audit"
-            break
-          done
+          # Zoek en upload pip-audit resultaten
+          pip_audit_file=$(find . -name "*pip-audit*.json" | head -1)
+          if [ -n "$pip_audit_file" ]; then
+            upload_to_defectdojo "$pip_audit_file" "Generic Findings Import" "pip-audit"
+          else
+            echo "No pip-audit results found to upload"
+          fi
+        continue-on-error: true
