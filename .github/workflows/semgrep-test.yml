@@ -1,0 +1,36 @@
+name: Semgrep SAST
+on:
+  workflow_dispatch:  # Handmatige trigger voor testing
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  semgrep-scan:
+    name: Semgrep SAST
+    runs-on: ubuntu-latest  # GitHub-hosted runner in plaats van self-hosted
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          
+      - name: Semgrep Scan
+        uses: semgrep/semgrep-action@v1
+        with:
+          config: auto
+          output: semgrep-results.json,semgrep.sarif
+          publish-token: ${{ secrets.SEMGREP_APP_TOKEN }}
+          
+      - name: Upload to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: semgrep.sarif
+          
+      - name: Upload Semgrep results
+        uses: actions/upload-artifact@v4
+        with:
+          name: semgrep-results
+          path: |
+            semgrep-results.json
+            semgrep.sarif
