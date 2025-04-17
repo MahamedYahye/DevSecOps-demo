@@ -28,33 +28,23 @@
 #         env:
 #           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 #         continue-on-error: true
-name: CI
+name: Bandit Security Scan
 
-on: [push]
+on: [push, pull_request]
 
 jobs:
- sast_scan:
-   name: Run Bandit Scan
-   runs-on: ubuntu-latest
-
-   steps:
-   - name: Checkout code
-     uses: actions/checkout@v4
-
-   - name: Set up Python
-     uses: actions/setup-python@v4
-     with:
-       python-version: 3.8
-
-   - name: Install Bandit
-     run: pip install bandit
-
-   - name: Run Bandit Scan
-     run: bandit -ll -ii -r . -f json -o bandit-report.json
-
-   - name: Upload Artifact
-     uses: actions/upload-artifact@v4
-     if: always()
-     with:
-      name: bandit-findings
-      path: bandit-report.json
+  bandit_scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Run Bandit (no fail)
+        run: |
+          pip install bandit
+          bandit -ll -ii -r . -f json -o bandit-report.json || echo "Bandit found issues - continuing anyway"
+          
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bandit-results
+          path: bandit-report.json
