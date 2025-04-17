@@ -102,32 +102,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      # Controleer Semgrep versie voor referentie
-      - name: Verify Semgrep Version
-        run: semgrep --version
-      
       # Voer semgrep scan uit met standaard regels en genereer zowel JSON als SARIF output
       - name: Run Semgrep Scan
         run: |
-          # Eerst directory aanmaken
-          mkdir -p ./semgrep-results
-          
-          # Full scan - eenvoudige syntax, vermijd complexiteit
-          semgrep --config=auto --skip-git-ignored=no --output ./semgrep-results/scan.json --json
-          semgrep --config=auto --skip-git-ignored=no --output ./semgrep-results/scan.sarif --sarif
-          
-          # Controleer of bestanden zijn aangemaakt
-          ls -la ./semgrep-results/
+          mkdir -p semgrep-results
+          semgrep --config=auto --output=semgrep-results/scan.json --json
+          semgrep --config=auto --output=semgrep-results/scan.sarif --sarif
       
-      # Sla resultaten op als artifact - aangepaste path
+      # Sla resultaten op als artifact
       - name: Upload Scan Results
         if: always()  # Altijd uploaden, zelfs als scan fouten vindt
         uses: actions/upload-artifact@v4
         with:
           name: semgrep-results
-          path: ./semgrep-results/
+          path: semgrep-results/
           retention-days: 7
-          if-no-files-found: warn  # Alleen waarschuwen als geen bestanden gevonden worden
+          if-no-files-found: warn
           
   bandit_scan:
     name: Bandit Security Scan
@@ -141,12 +131,9 @@ jobs:
           # Gebruik een volledige scan die alles controleert
           bandit -ll -ii -r . --ignore-nosec -f json -o bandit-report.json || echo "Bandit found issues - continuing anyway"
           
-          # Controleer of bestand is aangemaakt
-          ls -la bandit-report.json
-          
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: bandit-results
           path: bandit-report.json
-          if-no-files-found: warn  # Voorkom falen als bestand niet bestaat
+          if-no-files-found: warn
