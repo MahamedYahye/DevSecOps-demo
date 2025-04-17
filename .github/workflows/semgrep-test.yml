@@ -49,6 +49,41 @@
 #           name: bandit-results
 #           path: bandit-report.json
 
+# name: Semgrep Scan
+
+# on:
+#   push:
+#     branches: [ main, master ]
+#   # Scan on-demand through GitHub Actions interface:
+#   workflow_dispatch: {}
+
+# jobs:
+#   semgrep:
+#     name: Semgrep Scan
+#     runs-on: ubuntu-latest
+#     container:
+#       # Docker image met Semgrep geïnstalleerd
+#       image: semgrep/semgrep
+#     steps:
+#       - uses: actions/checkout@v4
+      
+#       # Voer semgrep scan uit met standaard regels en genereer zowel JSON als SARIF output
+#       - name: Run Semgrep Scan
+#         run: |
+#           mkdir -p semgrep-results
+#           semgrep --config=auto --output=semgrep-results/scan.json --json
+#           semgrep --config=auto --output=semgrep-results/scan.sarif --sarif
+      
+#       # Sla resultaten op als artifact
+#       - name: Upload Scan Results
+#         if: always()  # Altijd uploaden, zelfs als scan fouten vindt
+#         uses: actions/upload-artifact@v4
+#         with:
+#           name: semgrep-results
+#           path: semgrep-results/
+#           retention-days: 7
+
+
 name: Semgrep Scan
 
 on:
@@ -82,3 +117,18 @@ jobs:
           name: semgrep-results
           path: semgrep-results/
           retention-days: 7
+          
+  bandit_scan:
+    name: Bandit Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Bandit (no fail)
+        run: |
+          pip install bandit
+          bandit -ll -ii -r . -f json -o bandit-report.json || echo "Bandit found issues - continuing anyway"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bandit-results
+          path: bandit-report.json
