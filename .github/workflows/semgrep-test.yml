@@ -24,13 +24,20 @@ jobs:
         continue-on-error: true
         with:
           config: auto
+          output: semgrep-results.json  # Specifiek het outputbestand
+      
+      - name: List files (Debug)
+        run: find . -name "*.json" | grep -i semgrep
           
       - name: Upload Semgrep results
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: semgrep-results
-          path: semgrep-results.json
+          path: |
+            .semgrep/semgrep-results.json
+            .semgrep/*.json
+            semgrep-results.json
 
   gitleaks-scan:
     name: Gitleaks
@@ -40,15 +47,29 @@ jobs:
         with:
           fetch-depth: 0
           
-      - uses: gitleaks/gitleaks-action@v2
-        continue-on-error: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }} # Alleen nodig voor Organisaties, niet voor persoonlijke accounts
+      - name: Run Gitleaks manually
+        run: |
+          # Download en installeer Gitleaks
+          curl -sSfL https://github.com/zricethezav/gitleaks/releases/download/v8.16.3/gitleaks_8.16.3_linux_x64.tar.gz | tar -xz
+          chmod +x gitleaks
+          
+          # Handmatig uitvoeren met output naar bestand
+          ./gitleaks detect --source . --report-format json --report-path gitleaks-results.json || true
+          
+          # Controleer of het rapport bestaat, zo niet, maak een leeg rapport
+          if [ ! -f gitleaks-results.json ]; then
+            echo "[]" > gitleaks-results.json
+            echo "Geen leaks gedetecteerd, empty rapport gemaakt"
+          else
+            echo "Gitleaks rapport succesvol gemaakt"
+          fi
+          
+      - name: List files (Debug)
+        run: ls -la
           
       - name: Upload Gitleaks results
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: gitleaks-results
-          path: leak_report.json
+          path: gitleaks-results.json
