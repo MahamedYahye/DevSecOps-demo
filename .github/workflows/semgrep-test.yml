@@ -106,8 +106,9 @@ jobs:
       - name: Run Semgrep Scan
         run: |
           mkdir -p semgrep-results
-          semgrep --config=auto --output=semgrep-results/scan.json --json
-          semgrep --config=auto --output=semgrep-results/scan.sarif --sarif
+          # Volledige scan configuratie: ignoreer geen bestanden, scan alles
+          semgrep --config=auto --skip-git-ignored=no --skip-unknown-extensions=no --verbose --output=semgrep-results/scan.json --json
+          semgrep --config=auto --skip-git-ignored=no --skip-unknown-extensions=no --verbose --output=semgrep-results/scan.sarif --sarif
       
       # Sla resultaten op als artifact
       - name: Upload Scan Results
@@ -126,7 +127,8 @@ jobs:
       - name: Run Bandit (no fail)
         run: |
           pip install bandit
-          bandit -ll -ii -r . -f json -o bandit-report.json || echo "Bandit found issues - continuing anyway"
+          # Gebruik een volledige scan die alles controleert
+          bandit -ll -ii -r . --ignore-nosec -f json -o bandit-report.json || echo "Bandit found issues - continuing anyway"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
