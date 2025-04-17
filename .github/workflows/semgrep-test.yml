@@ -64,11 +64,11 @@ jobs:
     name: Semgrep Scan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Semgrep Scan
         id: semgrep
-        uses: semgrep/semgrep-action@v1
+        uses: semgrep/semgrep-action@v4
         with:
           config: p/default
         env:
@@ -87,7 +87,7 @@ jobs:
           
       - name: Upload SARIF results
         if: always()  # Run this step even if the previous step fails
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: semgrep-results
           path: |
