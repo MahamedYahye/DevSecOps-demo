@@ -28,130 +28,56 @@
 #         env:
 #           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 #         continue-on-error: true
-name: Security Scan and DefectDojo Upload
+name: Security Scans
 on:
   push:
-    branches: ["main"]
+    branches: [ main, master ]
   pull_request:
+    branches: [ main, master ]
   workflow_dispatch:
 
 jobs:
   semgrep:
-    name: Semgrep Scan
+    name: Semgrep
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: semgrep/semgrep-action@v1
         with:
-          python-version: '3.x'
-      - name: Install Semgrep
-        run: pip install semgrep
-      - name: Run Semgrep
-        run: semgrep scan --json > semgrep-results.json || true
-      - name: Upload Semgrep Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: semgrep-results
-          path: semgrep-results.json
-        if: always()
+          config: auto
+        continue-on-error: true
 
   gitleaks:
-    name: Gitleaks Scan
+    name: Gitleaks
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Voor volledige Git-geschiedenis
-      - name: Install Gitleaks
-        run: |
-          curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.18.2/gitleaks_8.18.2_linux_x64.tar.gz | tar -xz -C /usr/local/bin
-      - name: Run Gitleaks
-        run: gitleaks detect --report-format json --report-path gitleaks-results.json || true
-      - name: Upload Gitleaks Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: gitleaks-results
-          path: gitleaks-results.json
-        if: always()
-
-  python-security-scans:
-    name: Python Security Scans
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.x'
-      - name: Install Bandit
-        run: pip install bandit
-      - name: Run Bandit
-        run: bandit -r . -f json -o bandit-results.json || true
-      - name: Upload Bandit Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: python-security-results
-          path: bandit-results.json
-        if: always()
-
-  upload-to-defectdojo:
-    name: Upload to DefectDojo
-    needs: [semgrep, gitleaks, python-security-scans]
-    if: github.event_name == 'push'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-
-      - name: List downloaded files
-        run: |
-          echo "Downloaded artifact structure:"
-          find . -type f -exec ls -l {} \;
-
-      - name: Upload to DefectDojo
-        run: |
-          # Upload functie (jouw versie, licht aangepast voor duidelijkheid)
-          upload_to_defectdojo() {
-            local file=$1
-            local scan_type=$2
-            local description=$3
-            
-            if [ ! -f "$file" ]; then
-              echo "❌ $file not found, skipping upload"
-              return 1
-            fi
-            
-            echo "Uploading $description to DefectDojo ($file)..."
-            RESULT=$(curl -s -w "\n%{http_code}" -X POST \
-              -H "Authorization: Token ${{ secrets.DEFECTDOJO_API_KEY }}" \
-              -F "scan_date=$(date +%Y-%m-%d)" \
-              -F "engagement=${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}" \
-              -F "file=@$file" \
-              -F "scan_type=$scan_type" \
-              -F "close_old_findings=true" \
-              ${{ secrets.DEFECTDOJO_URL }}/api/v2/import-scan/)
-            
-            STATUS_CODE=$(echo "$RESULT" | tail -n1)
-            CONTENT=$(echo "$RESULT" | sed '$d')
-            
-            echo "$description upload status: $STATUS_CODE"
-            echo "Response: $CONTENT"
-            echo "## $description Upload" >> $GITHUB_STEP_SUMMARY
-            echo "- Status code: $STATUS_CODE" >> $GITHUB_STEP_SUMMARY
-            if [ "$STATUS_CODE" == "201" ]; then
-              echo "- Result: Success ✅" >> $GITHUB_STEP_SUMMARY
-            else
-              echo "- Result: Failed ❌" >> $GITHUB_STEP_SUMMARY
-              echo "- Error: $CONTENT" >> $GITHUB_STEP_SUMMARY
-            fi
-          }
-
-          # Upload bestanden (expliciete paden gebaseerd op artifact-namen)
-          upload_to_defectdojo "semgrep-results/semgrep-results.json" "Semgrep JSON Report" "Semgrep"
-          upload_to_defectdojo "gitleaks-results/gitleaks-results.json" "Gitleaks Scan" "Gitleaks"
-          upload_to_defectdojo "python-security-results/bandit-results.json" "Bandit Scan" "Bandit"
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         continue-on-error: true
+
+  sast_scan:
+    name: Run Bandit Scan
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4 # Gebruik v4 voor consistentie
+      with:
+        fetch-depth: 0 # Aanbevolen voor SAST tools
+    - name: Set up Python
+      uses: actions/setup-python@v4 # Gebruik v4 voor consistentie
+      with:
+        python-version: 3.8
+    - name: Install Bandit
+      run: pip install bandit
+    - name: Run Bandit Scan
+      run: bandit -ll -ii -r . -f json -o bandit-report.json
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4 # Gebruik v4 voor consistentie
+      if: always()
+      with:
+        name: bandit-findings
+        path: bandit-report.json
