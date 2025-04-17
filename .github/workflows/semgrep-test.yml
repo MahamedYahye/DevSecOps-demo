@@ -28,23 +28,69 @@
 #         env:
 #           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 #         continue-on-error: true
-name: Bandit Security Scan
+# name: Bandit Security Scan
 
-on: [push, pull_request]
+# on: [push, pull_request]
+
+# jobs:
+#   bandit_scan:
+#     runs-on: ubuntu-latest
+#     steps:
+#       - uses: actions/checkout@v4
+      
+#       - name: Run Bandit (no fail)
+#         run: |
+#           pip install bandit
+#           bandit -ll -ii -r . -f json -o bandit-report.json || echo "Bandit found issues - continuing anyway"
+          
+#       - uses: actions/upload-artifact@v4
+#         if: always()
+#         with:
+#           name: bandit-results
+#           path: bandit-report.json
+
+name: Semgrep Scan
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    - cron: '0 0 * * 0'  # Run weekly on Sunday at midnight
 
 jobs:
-  bandit_scan:
+  semgrep:
+    name: Semgrep Scan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      
-      - name: Run Bandit (no fail)
-        run: |
-          pip install bandit
-          bandit -ll -ii -r . -f json -o bandit-report.json || echo "Bandit found issues - continuing anyway"
-          
-      - uses: actions/upload-artifact@v4
-        if: always()
+      - uses: actions/checkout@v3
+
+      - name: Semgrep Scan
+        id: semgrep
+        uses: semgrep/semgrep-action@v1
         with:
-          name: bandit-results
-          path: bandit-report.json
+          config: p/default
+        env:
+          SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}  # Optioneel, als je Semgrep Cloud gebruikt
+          
+      - name: Generate SARIF file
+        if: always()
+        run: |
+          semgrep --config=p/default --json > semgrep-results.json
+          
+      - name: Convert JSON to SARIF
+        if: always()
+        run: |
+          echo '{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"semgrep","informationUri":"https://semgrep.dev/","rules":[]}},"results":[]}]}' > semgrep-results.sarif
+          # In een echte omgeving zou je hier een script gebruiken om JSON naar SARIF te converteren
+          
+      - name: Upload SARIF results
+        if: always()  # Run this step even if the previous step fails
+        uses: actions/upload-artifact@v3
+        with:
+          name: semgrep-results
+          path: |
+            semgrep-results.json
+            semgrep-results.sarif
+          retention-days: 7
