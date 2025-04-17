@@ -15,61 +15,80 @@ jobs:
     name: Semgrep SAST
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
         with:
-          fetch-depth: 0
-          
-      - name: Semgrep Scan
-        uses: semgrep/semgrep-action@v1
-        continue-on-error: true
-        with:
-          config: auto
-          output: semgrep-results.json  # Specifiek het outputbestand
+          fetch-depth: 0  # Vereist voor volledige git geschiedenis (belangrijk voor Semgrep)
       
-      - name: List files (Debug)
-        run: find . -name "*.json" | grep -i semgrep
-          
+      - name: Run Semgrep Scan
+        uses: semgrep/semgrep-action@v1
+        continue-on-error: true  # Voorkomt dat de workflow faalt bij findings
+        with:
+          config: "p/default"  # Standaard Semgrep ruleset
+          # output: semgrep-results.json  # Optioneel: handmatig pad instellen
+
+      - name: Debug - List Semgrep results
+        run: |
+          echo "=== Semgrep bestanden ==="
+          find . -name "*.json" | grep -i semgrep || echo "Geen Semgrep resultaten gevonden"
+      
       - name: Upload Semgrep results
         uses: actions/upload-artifact@v4
-        if: always()
+        if: always()  # Upload zelfs bij falen
         with:
           name: semgrep-results
           path: |
-            .semgrep/semgrep-results.json
-            .semgrep/*.json
-            semgrep-results.json
+            .semgrep/semgrep-results.json  # Standaard output locatie
+            semgrep-results.json            # Alternatief pad (indien handmatig ingesteld)
 
   gitleaks-scan:
-    name: Gitleaks
+    name: Gitleaks Secret Detection
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
         with:
-          fetch-depth: 0
-          
-      - name: Run Gitleaks manually
+          fetch-depth: 0  # Vereist voor Gitleaks om commits te inspecteren
+
+      - name: Run Gitleaks
+        uses: zricethezav/gitleaks-action@v2
+        continue-on-error: true
+        with:
+          report-format: json
+          report-path: gitleaks-results.json
+          # config-path: .github/gitleaks.toml  # Optioneel: custom config
+
+      - name: Debug - List Gitleaks results
         run: |
-          # Download en installeer Gitleaks
-          curl -sSfL https://github.com/zricethezav/gitleaks/releases/download/v8.16.3/gitleaks_8.16.3_linux_x64.tar.gz | tar -xz
-          chmod +x gitleaks
-          
-          # Handmatig uitvoeren met output naar bestand
-          ./gitleaks detect --source . --report-format json --report-path gitleaks-results.json || true
-          
-          # Controleer of het rapport bestaat, zo niet, maak een leeg rapport
-          if [ ! -f gitleaks-results.json ]; then
-            echo "[]" > gitleaks-results.json
-            echo "Geen leaks gedetecteerd, empty rapport gemaakt"
+          echo "=== Gitleaks bestanden ==="
+          ls -la | grep -i gitleaks || echo "Geen Gitleaks resultaten gevonden"
+          if [ -f "gitleaks-results.json" ]; then
+            echo "Gitleaks rapport bestaat"
           else
-            echo "Gitleaks rapport succesvol gemaakt"
+            echo "[]" > gitleaks-results.json  # Fallback: leeg JSON array
           fi
-          
-      - name: List files (Debug)
-        run: ls -la
-          
+
       - name: Upload Gitleaks results
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: gitleaks-results
           path: gitleaks-results.json
+
+  # Optioneel: Debug job om alle gegenereerde bestanden te inspecteren
+  debug:
+    name: Debug Artifacts
+    needs: [semgrep-scan, gitleaks-scan]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+      
+      - name: Show file structure
+        run: |
+          echo "=== ALL FILES ==="
+          find . -type f
+          echo "=== SEMGREP RESULTS ==="
+          cat .semgrep/semgrep-results.json || echo "Geen Semgrep resultaten"
+          echo "=== GITLEAKS RESULTS ==="
+          cat gitleaks-results.json || echo "Geen Gitleaks resultaten"
