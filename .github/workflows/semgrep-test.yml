@@ -77,7 +77,7 @@ jobs:
       # Sla resultaten op als artifact
       - name: Upload Scan Results
         if: always()  # Altijd uploaden, zelfs als scan fouten vindt
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: semgrep-results
           path: semgrep-results/
