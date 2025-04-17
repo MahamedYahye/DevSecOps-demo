@@ -49,56 +49,36 @@
 #           name: bandit-results
 #           path: bandit-report.json
 
-name: Semgrep
+name: Semgrep Scan
+
 on:
-  # Scan changed files in PRs (diff-aware scanning):
-  pull_request: {}
+  push:
+    branches: [ main, master ]
   # Scan on-demand through GitHub Actions interface:
   workflow_dispatch: {}
-  # Scan mainline branches if there are changes to .github/workflows/semgrep.yml:
-  push:
-    branches:
-      - main
-      - master
-    paths:
-      - .github/workflows/semgrep.yml
-  # Schedule the CI job (this method uses cron syntax):
-  schedule:
-    - cron: '20 17 * * *' # Sets Semgrep to scan every day at 17:20 UTC.
-    # Het is aanbevolen om het schema te wijzigen naar een willekeurige tijd.
-permissions:
-  contents: read
+
 jobs:
   semgrep:
-    # User definable name of this GitHub Actions job.
-    name: semgrep/ci
-    # If you are self-hosting, change the following `runs-on` value:
+    name: Semgrep Scan
     runs-on: ubuntu-latest
     container:
-      # A Docker image with Semgrep installed. Do not change this.
+      # Docker image met Semgrep geïnstalleerd
       image: semgrep/semgrep
-    # Skip any PR created by dependabot to avoid permission issues:
-    if: (github.actor != 'dependabot[bot]')
     steps:
-      # Fetch project source with GitHub Actions Checkout. Use either v3 or v4.
       - uses: actions/checkout@v4
-      # Run the "semgrep ci" command on the command line of the docker image.
+      
+      # Voer semgrep scan uit met standaard regels en genereer zowel JSON als SARIF output
       - name: Run Semgrep Scan
-        id: semgrep-scan
-        run: semgrep ci
-        env:
-          # Connect to Semgrep AppSec Platform through your SEMGREP_APP_TOKEN.
-          # Generate a token from Semgrep AppSec Platform > Settings
-          # and add it to your GitHub secrets.
-          SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
-
-      # Upload scan results as artifact (optioneel)
-      - name: Upload Semgrep Scan Results
-        if: always()
+        run: |
+          mkdir -p semgrep-results
+          semgrep --config=auto --output=semgrep-results/scan.json --json
+          semgrep --config=auto --output=semgrep-results/scan.sarif --sarif
+      
+      # Sla resultaten op als artifact
+      - name: Upload Scan Results
+        if: always()  # Altijd uploaden, zelfs als scan fouten vindt
         uses: actions/upload-artifact@v3
         with:
           name: semgrep-results
-          path: |
-            .semgrep/semgrep.sarif
-            .semgrep/semgrep.json
+          path: semgrep-results/
           retention-days: 7
