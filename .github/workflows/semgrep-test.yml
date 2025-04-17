@@ -84,6 +84,60 @@
 #           retention-days: 7
 
 
+# name: Security Scans
+
+# on:
+#   push:
+#     branches: [ main, master ]
+#   # Scan on-demand through GitHub Actions interface:
+#   workflow_dispatch: {}
+
+# jobs:
+#   semgrep:
+#     name: Semgrep Scan
+#     runs-on: ubuntu-latest
+#     container:
+#       # Docker image met Semgrep geïnstalleerd
+#       image: semgrep/semgrep
+#     steps:
+#       - uses: actions/checkout@v4
+      
+#       # Voer semgrep scan uit met standaard regels en genereer zowel JSON als SARIF output
+#       - name: Run Semgrep Scan
+#         run: |
+#           mkdir -p semgrep-results
+#           semgrep --config=auto --output=semgrep-results/scan.json --json
+#           semgrep --config=auto --output=semgrep-results/scan.sarif --sarif
+      
+#       # Sla resultaten op als artifact
+#       - name: Upload Scan Results
+#         if: always()  # Altijd uploaden, zelfs als scan fouten vindt
+#         uses: actions/upload-artifact@v4
+#         with:
+#           name: semgrep-results
+#           path: semgrep-results/
+#           retention-days: 7
+#           if-no-files-found: warn
+          
+#   bandit_scan:
+#     name: Bandit Security Scan
+#     runs-on: ubuntu-latest
+#     steps:
+#       - uses: actions/checkout@v4
+      
+#       - name: Run Bandit (no fail)
+#         run: |
+#           pip install bandit
+#           # Gebruik een volledige scan die alles controleert
+#           bandit -ll -ii -r . --ignore-nosec -f json -o bandit-report.json || echo "Bandit found issues - continuing anyway"
+          
+#       - uses: actions/upload-artifact@v4
+#         if: always()
+#         with:
+#           name: bandit-results
+#           path: bandit-report.json
+#           if-no-files-found: warn
+
 name: Security Scans
 
 on:
@@ -102,16 +156,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      # Voer semgrep scan uit met standaard regels en genereer zowel JSON als SARIF output
+      # Voer semgrep scan één keer uit en sla resultaten op
       - name: Run Semgrep Scan
         run: |
+          # Maak directory voor resultaten
           mkdir -p semgrep-results
-          semgrep --config=auto --output=semgrep-results/scan.json --json
-          semgrep --config=auto --output=semgrep-results/scan.sarif --sarif
+          
+          # Voer scan uit met tee om zowel naar console als bestand te schrijven
+          semgrep --config=auto | tee semgrep-console-output.txt
+          
+          # Sla resultaten op in verschillende formaten
+          semgrep --config=auto --output=semgrep-results/scan.json --json --quiet
+          semgrep --config=auto --output=semgrep-results/scan.sarif --sarif --quiet
+          
+          # Voeg console output toe aan resultaten
+          mv semgrep-console-output.txt semgrep-results/
       
       # Sla resultaten op als artifact
       - name: Upload Scan Results
-        if: always()  # Altijd uploaden, zelfs als scan fouten vindt
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: semgrep-results
@@ -128,12 +191,19 @@ jobs:
       - name: Run Bandit (no fail)
         run: |
           pip install bandit
-          # Gebruik een volledige scan die alles controleert
-          bandit -ll -ii -r . --ignore-nosec -f json -o bandit-report.json || echo "Bandit found issues - continuing anyway"
+          
+          # Maak een output directory
+          mkdir -p bandit-results
+          
+          # Voer scan uit met tee om zowel naar console als bestand te schrijven
+          bandit -ll -ii -r . | tee bandit-results/console-output.txt || echo "Bandit found issues - continuing anyway"
+          
+          # Genereer JSON rapport (stil)
+          bandit -ll -ii -r . --ignore-nosec -f json -o bandit-results/report.json || echo "Bandit found issues - continuing anyway"
           
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: bandit-results
-          path: bandit-report.json
+          path: bandit-results/
           if-no-files-found: warn
