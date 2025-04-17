@@ -1,3 +1,33 @@
+# name: Security Scans
+# on:
+#   push:
+#     branches: [ main, master ]
+#   pull_request:
+#     branches: [ main, master ]
+#   workflow_dispatch:
+
+# jobs:
+#   semgrep:
+#     name: Semgrep
+#     runs-on: ubuntu-latest
+#     steps:
+#       - uses: actions/checkout@v4
+#       - uses: semgrep/semgrep-action@v1
+#         with:
+#           config: auto
+#         continue-on-error: true
+
+#   gitleaks:
+#     name: Gitleaks
+#     runs-on: ubuntu-latest
+#     steps:
+#       - uses: actions/checkout@v4
+#         with:
+#           fetch-depth: 0
+#       - uses: gitleaks/gitleaks-action@v2
+#         env:
+#           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+#         continue-on-error: true
 name: Security Scans
 on:
   push:
@@ -16,6 +46,13 @@ jobs:
         with:
           config: auto
         continue-on-error: true
+      - name: Upload Semgrep results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: semgrep-results
+          path: |
+            .semgrep/*.json
 
   gitleaks:
     name: Gitleaks
@@ -28,3 +65,159 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         continue-on-error: true
+      - name: Upload Gitleaks results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gitleaks-results
+          path: |
+            leak_report.json
+            gitleaks-report.json
+
+  sbom-vulnerability-scan:
+    name: SBOM & Vulnerability Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        
+      - name: Run Syft (SBOM)
+        uses: anchore/sbom-action@v0
+        with:
+          format: json
+          output-file: syft-sbom.json
+          
+      - name: Generate SPDX SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          format: spdx-json
+          output-file: syft-spdx.json
+          
+      - name: Run Grype (Vulnerabilities)
+        uses: anchore/scan-action@v3
+        id: scan
+        with:
+          sbom: syft-sbom.json
+          output-format: json
+          
+      - name: Upload SBOM & Vulnerability results
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-vulnerability-results
+          path: |
+            syft-sbom.json
+            syft-spdx.json
+            ${{ steps.scan.outputs.grype-json }}
+
+  python-security-scans:
+    name: Python Security Scans
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          fi
+          pip install bandit pip-audit
+          
+      - name: Run Bandit
+        run: |
+          bandit -r . -f json -o bandit-results.json
+        continue-on-error: true
+          
+      - name: Run pip-audit
+        run: |
+          pip-audit --format json > pip-audit-results.json
+        continue-on-error: true
+          
+      - name: Upload Python security results
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-security-results
+          path: |
+            bandit-results.json
+            pip-audit-results.json
+
+  upload-to-defectdojo:
+    name: Upload to DefectDojo
+    needs: [semgrep, gitleaks, sbom-vulnerability-scan, python-security-scans]
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        
+      - name: Upload to DefectDojo
+        run: |
+          upload_to_defectdojo() {
+            local file=$1
+            local scan_type=$2
+            local description=$3
+            
+            if [ ! -f "$file" ]; then
+              echo "$file not found, skipping upload"
+              return 1
+            fi
+            
+            echo "Uploading $description to DefectDojo..."
+            RESULT=$(curl -s -w "\n%{http_code}" -X POST \
+              -H "Authorization: Token ${{ secrets.DEFECTDOJO_API_KEY }}" \
+              -F "scan_date=$(date +%Y-%m-%d)" \
+              -F "engagement=${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}" \
+              -F "file=@$file" \
+              -F "scan_type=$scan_type" \
+              -F "close_old_findings=true" \
+              ${{ secrets.DEFECTDOJO_URL }}/api/v2/import-scan/)
+            
+            STATUS_CODE=$(echo "$RESULT" | tail -n1)
+            CONTENT=$(echo "$RESULT" | sed '$d')
+            
+            echo "$description upload status: $STATUS_CODE"
+            echo "Response: $CONTENT"
+            echo "## $description Upload" >> $GITHUB_STEP_SUMMARY
+            echo "- Status code: $STATUS_CODE" >> $GITHUB_STEP_SUMMARY
+            if [ "$STATUS_CODE" == "201" ]; then
+              echo "- Result: Success ✅" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "- Result: Failed ❌" >> $GITHUB_STEP_SUMMARY
+              echo "- Error: $CONTENT" >> $GITHUB_STEP_SUMMARY
+            fi
+          }
+          
+          # Zoek en upload de resultaten
+          find . -name "semgrep*.json" | while read file; do
+            upload_to_defectdojo "$file" "Semgrep JSON Report" "Semgrep"
+            break
+          done
+          
+          find . -name "*leak*.json" | while read file; do
+            upload_to_defectdojo "$file" "Gitleaks Scan" "Gitleaks"
+            break
+          done
+          
+          find . -name "syft-sbom.json" | while read file; do
+            upload_to_defectdojo "$file" "Anchore Engine Scan" "Syft SBOM"
+            break
+          done
+          
+          find . -name "grype-*.json" | while read file; do
+            upload_to_defectdojo "$file" "Anchore Grype" "Grype Vulnerabilities"
+            break
+          done
+          
+          find . -name "bandit-results.json" | while read file; do
+            upload_to_defectdojo "$file" "Bandit Scan" "Bandit"
+            break
+          done
+          
+          find . -name "pip-audit-results.json" | while read file; do
+            upload_to_defectdojo "$file" "Generic Findings Import" "pip-audit"
+            break
+          done
