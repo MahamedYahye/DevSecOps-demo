@@ -71,93 +71,22 @@
 #           if-no-files-found: warn
 
 
-name: Security Scans
-
+name: gitleaks
 on:
+  pull_request:
   push:
-    branches: [ main, master ]
-  # Scan on-demand through GitHub Actions interface:
-  workflow_dispatch: {}
-
+  workflow_dispatch:
+  schedule:
+    - cron: "0 4 * * *" # run once a day at 4 AM
 jobs:
-  semgrep:
-    name: Semgrep Scan
-    runs-on: ubuntu-latest
-    container:
-      # Docker image met Semgrep geïnstalleerd
-      image: semgrep/semgrep
-    steps:
-      - uses: actions/checkout@v4
-      
-      # Voer semgrep scan één keer uit en sla resultaten op
-      - name: Run Semgrep Scan
-        run: |
-          # Maak directory voor resultaten
-          mkdir -p semgrep-results
-          
-          # Voer scan uit met tee om zowel naar console als bestand te schrijven
-          semgrep --config=auto | tee semgrep-results/console-output.txt
-          
-          # Sla resultaten op in verschillende formaten
-          semgrep --config=auto --output=semgrep-results/scan.json --json --quiet
-          semgrep --config=auto --output=semgrep-results/scan.sarif --sarif --quiet
-      
-      # Sla resultaten op als artifact
-      - name: Upload Scan Results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: semgrep-results
-          path: semgrep-results/
-          retention-days: 7
-          if-no-files-found: warn
-          
-  bandit_scan:
-    name: Bandit Security Scan
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Run Bandit (no fail)
-        run: |
-          pip install bandit
-          
-          # Maak een output directory
-          mkdir -p bandit-results
-          
-          # Voer scan uit met tee om zowel naar console als bestand te schrijven
-          bandit -ll -ii -r . | tee bandit-results/console-output.txt || echo "Bandit found issues - continuing anyway"
-          
-          # Genereer JSON rapport (stil)
-          bandit -ll -ii -r . --ignore-nosec -f json -o bandit-results/report.json || echo "Bandit found issues - continuing anyway"
-          
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: bandit-results
-          path: bandit-results/
-          if-no-files-found: warn
-          
-  gitleaks:
-    name: GitLeaks Secret Scan
+  scan:
+    name: gitleaks
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: gitleaks/gitleaks-action@v4
+      - uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }} # Alleen vereist voor Organisaties, niet voor persoonlijke accounts
-        continue-on-error: true  # Voorkom dat de workflow faalt bij gevonden geheimen
-      
-      # Optioneel: resultaten opslaan als artifact
-      - name: Upload GitLeaks Results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: gitleaks-results
-          path: |
-            leak_report
-            results.sarif
-          if-no-files-found: warn
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }} # Only required for Organizations, not personal accounts.
