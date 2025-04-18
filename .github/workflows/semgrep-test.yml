@@ -76,35 +76,27 @@ name: Security Scans
 on:
   push:
     branches: [ main, master ]
-  workflow_dispatch: {}
+  workflow_dispatch:
 
 jobs:
   semgrep:
     name: Semgrep Scan
     runs-on: ubuntu-latest
     container:
-      # Docker image met Semgrep geïnstalleerd
       image: semgrep/semgrep
     steps:
       - uses: actions/checkout@v4
       
-      # Voer semgrep scan één keer uit en sla resultaten op
       - name: Run Semgrep Scan
         run: |
-          # Maak directory voor resultaten
           mkdir -p semgrep-results
-          
-          # Voer scan uit met tee om zowel naar console als bestand te schrijven
           semgrep --config=auto | tee semgrep-results/console-output.txt
-          
-          # Sla resultaten op in verschillende formaten
           semgrep --config=auto --output=semgrep-results/scan.json --json --quiet
           semgrep --config=auto --output=semgrep-results/scan.sarif --sarif --quiet
       
-      # Sla resultaten op als artifact
       - name: Upload Scan Results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v3
         with:
           name: semgrep-results
           path: semgrep-results/
@@ -120,14 +112,8 @@ jobs:
       - name: Run Bandit (no fail)
         run: |
           pip install bandit
-          
-          # Maak een output directory
           mkdir -p bandit-results
-          
-          # Voer scan uit met tee om zowel naar console als bestand te schrijven
           bandit -ll -ii -r . | tee bandit-results/console-output.txt || echo "Bandit found issues - continuing anyway"
-          
-          # Genereer JSON rapport (stil)
           bandit -ll -ii -r . --ignore-nosec -f json -o bandit-results/report.json || echo "Bandit found issues - continuing anyway"
           
       - uses: actions/upload-artifact@v4
@@ -151,18 +137,20 @@ jobs:
         id: gitleaks_run
         run: |
           mkdir -p gitleaks-results
+          chmod 777 gitleaks-results  # Voeg volledige schrijfpermissies toe aan de map
           
-          # Voer GitLeaks uit via Docker
           docker run --rm --security-opt=no-new-privileges \
           -v $(pwd):/path \
           zricethezav/gitleaks:${GITLEAKS_VERSION} detect \
           --source="/path" --verbose --report-format json --report-path=/path/gitleaks-results/report.json || true
           
-          # Toon resultaten in log en job summary
+          # Toon resultaten in de logs
+          echo "## GitLeaks Findings"
           if [ -f gitleaks-results/report.json ]; then
-            echo "## GitLeaks Findings" >> $GITHUB_STEP_SUMMARY
-            cat gitleaks-results/report.json || echo "Failed to display GitLeaks findings"
+            cat gitleaks-results/report.json
             echo "scan_status=success" >> $GITHUB_OUTPUT
+            echo "## GitLeaks Findings" >> $GITHUB_STEP_SUMMARY
+            cat gitleaks-results/report.json >> $GITHUB_STEP_SUMMARY || echo "Failed to display GitLeaks findings"
           else
             echo "Warning: GitLeaks output file is missing"
             echo "scan_status=incomplete" >> $GITHUB_OUTPUT
