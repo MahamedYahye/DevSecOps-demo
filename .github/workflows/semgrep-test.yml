@@ -144,21 +144,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Haal volledige geschiedenis op voor GitLeaks
-      
-      - name: Run GitLeaks
-        uses: gitleaks/gitleaks-action@v4
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v4
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}  # Optioneel, alleen nodig voor de pro versie
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }} # Alleen vereist voor Organisaties, niet voor persoonlijke accounts
         continue-on-error: true  # Voorkom dat de workflow faalt bij gevonden geheimen
       
+      # Optioneel: resultaten opslaan als artifact
       - name: Upload GitLeaks Results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: gitleaks-results
           path: |
+            leak_report
             results.sarif
-            leaked-secrets.json
           if-no-files-found: warn
