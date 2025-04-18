@@ -164,62 +164,197 @@
 #           path: gitleaks-results/
 #           retention-days: 7
 #           if-no-files-found: warn
+# name: Security Scans
+# on:
+#   push:
+#     branches: [ main]
+#   workflow_dispatch:
+# jobs:
+#   semgrep:
+#     name: Semgrep Scan
+#     runs-on: self-hosted
+#     steps:
+#       - uses: actions/checkout@v4
+
+#       - name: Run Semgrep Scan
+#         run: |
+#           # Maak resultaatdirectory
+#           mkdir -p semgrep-results
+
+#           # Gebruik Docker om Semgrep te draaien
+#           docker run --rm -v "$(pwd):/src" returntocorp/semgrep semgrep --config=auto --output=/src/semgrep-results/scan.json --json /src
+
+#           # Toon samenvatting in console
+#           cat semgrep-results/scan.json | jq '.results[] | .extra.message' | sort | uniq -c || echo "Geen resultaten gevonden of fout bij verwerken output"
+
+#       - name: Upload Scan Results
+#         if: always()
+#         uses: actions/upload-artifact@v4
+#         with:
+#           name: semgrep-results
+#           path: semgrep-results/
+#           retention-days: 7
+#           if-no-files-found: warn
+
+#   bandit_scan:
+#     name: Bandit Security Scan
+#     runs-on: self-hosted
+#     steps:
+#       - uses: actions/checkout@v4
+
+#       - name: Run Bandit (no fail)
+#         run: |
+#           # Maak resultaatdirectory
+#           mkdir -p bandit-results
+
+#           # Gebruik Docker om Bandit te draaien
+#           docker run --rm -v "$(pwd):/src" python:3.11-slim bash -c "pip install bandit && cd /src && bandit -ll -ii -r . -f json -o /src/bandit-results/report.json || true"
+
+#           # Toon samenvatting in console
+#           cat bandit-results/report.json | jq '.results[] | .issue_text' | sort | uniq -c || echo "Geen resultaten gevonden of fout bij verwerken output"
+
+#       - uses: actions/upload-artifact@v4
+#         if: always()
+#         with:
+#           name: bandit-results
+#           path: bandit-results/
+#           if-no-files-found: warn
+
+#   gitleaks:
+#     name: GitLeaks Secret Scan
+#     runs-on: self-hosted
+#     env:
+#       GITLEAKS_VERSION: v8.18.1
+#     steps:
+#       - uses: actions/checkout@v4
+#         with:
+#           fetch-depth: 0
+
+#       - name: Run GitLeaks
+#         run: |
+#           # Maak resultaatdirectory
+#           mkdir -p gitleaks-results
+#           chmod 777 gitleaks-results
+
+#           # Gebruik Docker om GitLeaks te draaien
+#           docker run --rm -v "$(pwd):/path" zricethezav/gitleaks:${GITLEAKS_VERSION} detect --source="/path" --report-format=json --report-path=/path/gitleaks-results/report.json || true
+
+#           # Toon resultaten in console
+#           if [ -f gitleaks-results/report.json ]; then
+#             cat gitleaks-results/report.json | jq '.[] | .Description' | sort | uniq -c || echo "Geen resultaten of fout bij verwerken"
+#           else
+#             echo "Geen GitLeaks resultaatbestand gevonden"
+#           fi
+
+#       - name: Upload GitLeaks Results
+#         if: always()
+#         uses: actions/upload-artifact@v4
+#         with:
+#           name: gitleaks-results
+#           path: gitleaks-results/
+#           retention-days: 7
+#           if-no-files-found: warn
+
+#   upload_to_defectdojo:
+#     name: Upload to DefectDojo
+#     needs: [semgrep, bandit_scan, gitleaks]
+#     runs-on: self-hosted
+#     steps:
+#       - name: Download all scan results
+#         uses: actions/download-artifact@v4
+#         with:
+#           path: all-results
+
+#       - name: Upload to DefectDojo
+#         env:
+#           DEFECTDOJO_URL: ${{ secrets.DEFECTDOJO_URL }}
+#           DEFECTDOJO_API_KEY: ${{ secrets.DEFECTDOJO_API_KEY }}
+#           DEFECTDOJO_ENGAGEMENT_ID: ${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}
+#         run: |
+#           SCAN_DATE=$(date +%Y-%m-%d)
+
+#           # Upload Semgrep resultaten
+#           if [ -f all-results/semgrep-results/scan.json ]; then
+#             echo "Uploading Semgrep results..."
+#             curl -X POST "${DEFECTDOJO_URL}/api/v2/import-scan/" \
+#               -H "Authorization: Token ${DEFECTDOJO_API_KEY}" \
+#               -F "scan_date=${SCAN_DATE}" \
+#               -F "scan_type=Semgrep JSON Report" \
+#               -F "engagement=${DEFECTDOJO_ENGAGEMENT_ID}" \
+#               -F "file=@all-results/semgrep-results/scan.json"
+#           fi
+
+#           # Upload Bandit resultaten
+#           if [ -f all-results/bandit-results/report.json ]; then
+#             echo "Uploading Bandit results..."
+#             curl -X POST "${DEFECTDOJO_URL}/api/v2/import-scan/" \
+#               -H "Authorization: Token ${DEFECTDOJO_API_KEY}" \
+#               -F "scan_date=${SCAN_DATE}" \
+#               -F "scan_type=Bandit Scan" \
+#               -F "engagement=${DEFECTDOJO_ENGAGEMENT_ID}" \
+#               -F "file=@all-results/bandit-results/report.json"
+#           fi
+
+#           # Upload GitLeaks resultaten
+#           if [ -f all-results/gitleaks-results/report.json ]; then
+#             echo "Uploading GitLeaks results..."
+#             curl -X POST "${DEFECTDOJO_URL}/api/v2/import-scan/" \
+#               -H "Authorization: Token ${DEFECTDOJO_API_KEY}" \
+#               -F "scan_date=${SCAN_DATE}" \
+#               -F "scan_type=Gitleaks Scan" \
+#               -F "engagement=${DEFECTDOJO_ENGAGEMENT_ID}" \
+#               -F "file=@all-results/gitleaks-results/report.json"
+#           fi
 name: Security Scans
 on:
   push:
-    branches: [ main, master ]
+    branches: [main]
   workflow_dispatch:
+
 jobs:
   semgrep:
     name: Semgrep Scan
     runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
-      
-      - name: Run Semgrep Scan
+
+      - name: Run Semgrep Scan (SARIF format)
         run: |
-          # Maak resultaatdirectory
           mkdir -p semgrep-results
+          docker run --rm -v "${{ github.workspace }}:/src" returntocorp/semgrep \
+            semgrep --config=auto --output=/src/semgrep-results/scan.sarif --sarif /src
           
-          # Gebruik Docker om Semgrep te draaien
-          docker run --rm -v "$(pwd):/src" returntocorp/semgrep semgrep --config=auto --output=/src/semgrep-results/scan.json --json /src
-          
-          # Toon samenvatting in console
-          cat semgrep-results/scan.json | jq '.results[] | .extra.message' | sort | uniq -c || echo "Geen resultaten gevonden of fout bij verwerken output"
-      
+          # Debug output
+          echo "=== SARIF Output Preview ==="
+          jq '.runs[0].results[0] | {message: .message.text, severity: .level}' semgrep-results/scan.sarif || echo "No results found"
+
       - name: Upload Scan Results
-        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: semgrep-results
           path: semgrep-results/
           retention-days: 7
-          if-no-files-found: warn
-          
+
   bandit_scan:
     name: Bandit Security Scan
     runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
-      
-      - name: Run Bandit (no fail)
+
+      - name: Run Bandit
         run: |
-          # Maak resultaatdirectory
           mkdir -p bandit-results
+          docker run --rm -v "$(pwd):/src" python:3.11-slim bash -c \
+            "pip install bandit && cd /src && bandit -ll -ii -r . -f json -o /src/bandit-results/report.json || true"
           
-          # Gebruik Docker om Bandit te draaien
-          docker run --rm -v "$(pwd):/src" python:3.11-slim bash -c "pip install bandit && cd /src && bandit -ll -ii -r . -f json -o /src/bandit-results/report.json || true"
-          
-          # Toon samenvatting in console
-          cat bandit-results/report.json | jq '.results[] | .issue_text' | sort | uniq -c || echo "Geen resultaten gevonden of fout bij verwerken output"
-          
+          echo "=== Bandit Results Summary ==="
+          jq '.results[] | .issue_text' bandit-results/report.json | sort | uniq -c || echo "No issues found"
+
       - uses: actions/upload-artifact@v4
-        if: always()
         with:
           name: bandit-results
           path: bandit-results/
-          if-no-files-found: warn
-          
+
   gitleaks:
     name: GitLeaks Secret Scan
     runs-on: self-hosted
@@ -229,79 +364,67 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          
+
       - name: Run GitLeaks
         run: |
-          # Maak resultaatdirectory
           mkdir -p gitleaks-results
-          chmod 777 gitleaks-results
+          docker run --rm -v "$(pwd):/path" zricethezav/gitleaks:$GITLEAKS_VERSION \
+            detect --source="/path" --report-format=json --report-path=/path/gitleaks-results/report.json || true
           
-          # Gebruik Docker om GitLeaks te draaien
-          docker run --rm -v "$(pwd):/path" zricethezav/gitleaks:${GITLEAKS_VERSION} detect --source="/path" --report-format=json --report-path=/path/gitleaks-results/report.json || true
-          
-          # Toon resultaten in console
-          if [ -f gitleaks-results/report.json ]; then
-            cat gitleaks-results/report.json | jq '.[] | .Description' | sort | uniq -c || echo "Geen resultaten of fout bij verwerken"
-          else
-            echo "Geen GitLeaks resultaatbestand gevonden"
-          fi
-          
-      - name: Upload GitLeaks Results
-        if: always()
-        uses: actions/upload-artifact@v4
+          echo "=== GitLeaks Findings ==="
+          jq '.[].Description' gitleaks-results/report.json | sort | uniq -c || echo "No secrets found"
+
+      - uses: actions/upload-artifact@v4
         with:
           name: gitleaks-results
           path: gitleaks-results/
-          retention-days: 7
-          if-no-files-found: warn
-          
+
   upload_to_defectdojo:
     name: Upload to DefectDojo
     needs: [semgrep, bandit_scan, gitleaks]
     runs-on: self-hosted
     steps:
-      - name: Download all scan results
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           path: all-results
-      
-      - name: Upload to DefectDojo
+
+      - name: Upload Results to DefectDojo
         env:
           DEFECTDOJO_URL: ${{ secrets.DEFECTDOJO_URL }}
           DEFECTDOJO_API_KEY: ${{ secrets.DEFECTDOJO_API_KEY }}
           DEFECTDOJO_ENGAGEMENT_ID: ${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}
         run: |
           SCAN_DATE=$(date +%Y-%m-%d)
-          
-          # Upload Semgrep resultaten
-          if [ -f all-results/semgrep-results/scan.json ]; then
-            echo "Uploading Semgrep results..."
-            curl -X POST "${DEFECTDOJO_URL}/api/v2/import-scan/" \
-              -H "Authorization: Token ${DEFECTDOJO_API_KEY}" \
-              -F "scan_date=${SCAN_DATE}" \
-              -F "scan_type=Semgrep JSON Report" \
-              -F "engagement=${DEFECTDOJO_ENGAGEMENT_ID}" \
-              -F "file=@all-results/semgrep-results/scan.json"
+
+          # Semgrep (SARIF)
+          if [ -f all-results/semgrep-results/scan.sarif ]; then
+            echo "Uploading Semgrep SARIF..."
+            curl -v -X POST "$DEFECTDOJO_URL/api/v2/import-scan/" \
+              -H "Authorization: Token $DEFECTDOJO_API_KEY" \
+              -F "scan_date=$SCAN_DATE" \
+              -F "scan_type=SARIF" \
+              -F "engagement=$DEFECTDOJO_ENGAGEMENT_ID" \
+              -F "file=@all-results/semgrep-results/scan.sarif"
           fi
-          
-          # Upload Bandit resultaten
+
+          # Bandit
           if [ -f all-results/bandit-results/report.json ]; then
-            echo "Uploading Bandit results..."
-            curl -X POST "${DEFECTDOJO_URL}/api/v2/import-scan/" \
-              -H "Authorization: Token ${DEFECTDOJO_API_KEY}" \
-              -F "scan_date=${SCAN_DATE}" \
+            echo "Uploading Bandit..."
+            curl -v -X POST "$DEFECTDOJO_URL/api/v2/import-scan/" \
+              -H "Authorization: Token $DEFECTDOJO_API_KEY" \
+              -F "scan_date=$SCAN_DATE" \
               -F "scan_type=Bandit Scan" \
-              -F "engagement=${DEFECTDOJO_ENGAGEMENT_ID}" \
+              -F "engagement=$DEFECTDOJO_ENGAGEMENT_ID" \
               -F "file=@all-results/bandit-results/report.json"
           fi
-          
-          # Upload GitLeaks resultaten
+
+          # GitLeaks
           if [ -f all-results/gitleaks-results/report.json ]; then
-            echo "Uploading GitLeaks results..."
-            curl -X POST "${DEFECTDOJO_URL}/api/v2/import-scan/" \
-              -H "Authorization: Token ${DEFECTDOJO_API_KEY}" \
-              -F "scan_date=${SCAN_DATE}" \
+            echo "Uploading GitLeaks..."
+            curl -v -X POST "$DEFECTDOJO_URL/api/v2/import-scan/" \
+              -H "Authorization: Token $DEFECTDOJO_API_KEY" \
+              -F "scan_date=$SCAN_DATE" \
               -F "scan_type=Gitleaks Scan" \
-              -F "engagement=${DEFECTDOJO_ENGAGEMENT_ID}" \
+              -F "engagement=$DEFECTDOJO_ENGAGEMENT_ID" \
               -F "file=@all-results/gitleaks-results/report.json"
           fi
