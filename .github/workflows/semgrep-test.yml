@@ -1,117 +1,42 @@
+
+
 # name: Security Scans
+
 # on:
 #   push:
 #     branches: [ main, master ]
-#   pull_request:
-#     branches: [ main, master ]
-#   workflow_dispatch:
+#   # Scan on-demand through GitHub Actions interface:
+#   workflow_dispatch: {}
 
 # jobs:
 #   semgrep:
-#     name: Semgrep
+#     name: Semgrep Scan
 #     runs-on: ubuntu-latest
-#     steps:
-#       - uses: actions/checkout@v4
-#       - uses: semgrep/semgrep-action@v1
-#         with:
-#           config: auto
-#         continue-on-error: true
-
-#   gitleaks:
-#     name: Gitleaks
-#     runs-on: ubuntu-latest
-#     steps:
-#       - uses: actions/checkout@v4
-#         with:
-#           fetch-depth: 0
-#       - uses: gitleaks/gitleaks-action@v2
-#         env:
-#           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-#         continue-on-error: true
-# name: Bandit Security Scan
-
-# on: [push, pull_request]
-
-# jobs:
-#   bandit_scan:
-#     runs-on: ubuntu-latest
+#     container:
+#       # Docker image met Semgrep geïnstalleerd
+#       image: semgrep/semgrep
 #     steps:
 #       - uses: actions/checkout@v4
       
-#       - name: Run Bandit (no fail)
+#       # Voer semgrep scan één keer uit en sla resultaten op
+#       - name: Run Semgrep Scan
 #         run: |
-#           pip install bandit
-#           bandit -ll -ii -r . -f json -o bandit-report.json || echo "Bandit found issues - continuing anyway"
+#           # Maak directory voor resultaten
+#           mkdir -p semgrep-results
           
-#       - uses: actions/upload-artifact@v4
+#           # Voer scan uit met tee om zowel naar console als bestand te schrijven
+#           semgrep --config=auto | tee semgrep-console-output.txt
+          
+#           # Sla resultaten op in verschillende formaten
+#           semgrep --config=auto --output=semgrep-results/scan.json --json --quiet
+#           semgrep --config=auto --output=semgrep-results/scan.sarif --sarif --quiet
+          
+#           # Voeg console output toe aan resultaten
+#           mv semgrep-console-output.txt semgrep-results/
+      
+#       # Sla resultaten op als artifact
+#       - name: Upload Scan Results
 #         if: always()
-#         with:
-#           name: bandit-results
-#           path: bandit-report.json
-
-# name: Semgrep Scan
-
-# on:
-#   push:
-#     branches: [ main, master ]
-#   # Scan on-demand through GitHub Actions interface:
-#   workflow_dispatch: {}
-
-# jobs:
-#   semgrep:
-#     name: Semgrep Scan
-#     runs-on: ubuntu-latest
-#     container:
-#       # Docker image met Semgrep geïnstalleerd
-#       image: semgrep/semgrep
-#     steps:
-#       - uses: actions/checkout@v4
-      
-#       # Voer semgrep scan uit met standaard regels en genereer zowel JSON als SARIF output
-#       - name: Run Semgrep Scan
-#         run: |
-#           mkdir -p semgrep-results
-#           semgrep --config=auto --output=semgrep-results/scan.json --json
-#           semgrep --config=auto --output=semgrep-results/scan.sarif --sarif
-      
-#       # Sla resultaten op als artifact
-#       - name: Upload Scan Results
-#         if: always()  # Altijd uploaden, zelfs als scan fouten vindt
-#         uses: actions/upload-artifact@v4
-#         with:
-#           name: semgrep-results
-#           path: semgrep-results/
-#           retention-days: 7
-
-
-# name: Security Scans
-
-# on:
-#   push:
-#     branches: [ main, master ]
-#   # Scan on-demand through GitHub Actions interface:
-#   workflow_dispatch: {}
-
-# jobs:
-#   semgrep:
-#     name: Semgrep Scan
-#     runs-on: ubuntu-latest
-#     container:
-#       # Docker image met Semgrep geïnstalleerd
-#       image: semgrep/semgrep
-#     steps:
-#       - uses: actions/checkout@v4
-      
-#       # Voer semgrep scan uit met standaard regels en genereer zowel JSON als SARIF output
-#       - name: Run Semgrep Scan
-#         run: |
-#           mkdir -p semgrep-results
-#           semgrep --config=auto --output=semgrep-results/scan.json --json
-#           semgrep --config=auto --output=semgrep-results/scan.sarif --sarif
-      
-#       # Sla resultaten op als artifact
-#       - name: Upload Scan Results
-#         if: always()  # Altijd uploaden, zelfs als scan fouten vindt
 #         uses: actions/upload-artifact@v4
 #         with:
 #           name: semgrep-results
@@ -128,15 +53,23 @@
 #       - name: Run Bandit (no fail)
 #         run: |
 #           pip install bandit
-#           # Gebruik een volledige scan die alles controleert
-#           bandit -ll -ii -r . --ignore-nosec -f json -o bandit-report.json || echo "Bandit found issues - continuing anyway"
+          
+#           # Maak een output directory
+#           mkdir -p bandit-results
+          
+#           # Voer scan uit met tee om zowel naar console als bestand te schrijven
+#           bandit -ll -ii -r . | tee bandit-results/console-output.txt || echo "Bandit found issues - continuing anyway"
+          
+#           # Genereer JSON rapport (stil)
+#           bandit -ll -ii -r . --ignore-nosec -f json -o bandit-results/report.json || echo "Bandit found issues - continuing anyway"
           
 #       - uses: actions/upload-artifact@v4
 #         if: always()
 #         with:
 #           name: bandit-results
-#           path: bandit-report.json
+#           path: bandit-results/
 #           if-no-files-found: warn
+
 
 name: Security Scans
 
@@ -163,14 +96,11 @@ jobs:
           mkdir -p semgrep-results
           
           # Voer scan uit met tee om zowel naar console als bestand te schrijven
-          semgrep --config=auto | tee semgrep-console-output.txt
+          semgrep --config=auto | tee semgrep-results/console-output.txt
           
           # Sla resultaten op in verschillende formaten
           semgrep --config=auto --output=semgrep-results/scan.json --json --quiet
           semgrep --config=auto --output=semgrep-results/scan.sarif --sarif --quiet
-          
-          # Voeg console output toe aan resultaten
-          mv semgrep-console-output.txt semgrep-results/
       
       # Sla resultaten op als artifact
       - name: Upload Scan Results
@@ -206,4 +136,29 @@ jobs:
         with:
           name: bandit-results
           path: bandit-results/
+          if-no-files-found: warn
+          
+  gitleaks:
+    name: GitLeaks Secret Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Haal volledige geschiedenis op voor GitLeaks
+      
+      - name: Run GitLeaks
+        uses: gitleaks/gitleaks-action@v4
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}  # Optioneel, alleen nodig voor de pro versie
+        continue-on-error: true  # Voorkom dat de workflow faalt bij gevonden geheimen
+      
+      - name: Upload GitLeaks Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitleaks-results
+          path: |
+            results.sarif
+            leaked-secrets.json
           if-no-files-found: warn
