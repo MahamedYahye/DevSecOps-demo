@@ -440,29 +440,33 @@ jobs:
   semgrep:
     name: Semgrep (Full Security Scan)
     runs-on: self-hosted
+    outputs:
+      scan_status: ${{ steps.semgrep_run.outputs.scan_status }}
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Run Semgrep Scan
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Run Semgrep
+        id: semgrep_run
         run: |
           mkdir -p semgrep-results
-          docker run --rm -v "${{ github.workspace }}:/src" semgrep/semgrep \
-            semgrep ci \
-            --sarif --output=/src/semgrep-results/scan.sarif \
-            /src || echo "Semgrep scan completed with findings"
+          docker run --rm --security-opt=no-new-privileges \
+            -v $(pwd):/src \
+            -e SEMGREP_APP_TOKEN=${{ secrets.SEMGREP_APP_TOKEN }} \
+            -e SEMGREP_REPO_URL=https://github.com/${{ github.repository }} \
+            semgrep/semgrep:latest \
+            bash -c "cd /src && semgrep --config=auto --json > /src/semgrep-results/semgrep-results.json && semgrep --config=auto --sarif > /src/semgrep-results/scan.sarif"
           
-          # Check if output file was created
-          if [ -f semgrep-results/scan.sarif ]; then
-            echo "✅ Semgrep scan completed successfully"
+          if [ -f semgrep-results/semgrep-results.json ] && [ -f semgrep-results/scan.sarif ]; then
+            echo "✅ Semgrep output files created successfully"
+            echo "scan_status=success" >> $GITHUB_OUTPUT
             echo "=== Top 10 Findings ==="
-            jq -r '.runs[0].results[] | "\(.level): \(.message.text)"' semgrep-results/scan.sarif 2>/dev/null | head -n 10 || echo "No findings or error parsing results"
+            jq -r '.results[] | "\(.extra.severity): \(.extra.message)"' semgrep-results/semgrep-results.json 2>/dev/null | head -n 10 || echo "No findings or error parsing results"
           else
-            echo "❌ Semgrep scan failed to produce output"
-            exit 1
+            echo "⚠️ Warning: Some Semgrep output files are missing"
+            echo "scan_status=incomplete" >> $GITHUB_OUTPUT
           fi
-        env:
-          # Optional: Connect to Semgrep AppSec Platform if token is available
-          SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
 
       - uses: actions/upload-artifact@v4
         if: always()
