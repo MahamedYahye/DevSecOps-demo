@@ -440,15 +440,16 @@ jobs:
   semgrep:
     name: Semgrep (Full Security Scan)
     runs-on: self-hosted
-    container:
-      image: semgrep/semgrep
     steps:
       - uses: actions/checkout@v4
 
       - name: Run Semgrep Scan
         run: |
           mkdir -p semgrep-results
-          semgrep ci --sarif --output=semgrep-results/scan.sarif || echo "Semgrep scan completed with findings"
+          docker run --rm -v "${{ github.workspace }}:/src" semgrep/semgrep \
+            semgrep ci \
+            --sarif --output=/src/semgrep-results/scan.sarif \
+            /src || echo "Semgrep scan completed with findings"
           
           # Check if output file was created
           if [ -f semgrep-results/scan.sarif ]; then
