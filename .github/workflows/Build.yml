@@ -28,18 +28,29 @@ jobs:
         run: |
           mkdir -p build-results
           
-          # Generate SBOM in multiple formats (assume Syft is installed on runner)
-          syft flask-app:${{ github.sha }} -o cyclonedx-json=build-results/sbom.cyclonedx.json
-          syft flask-app:${{ github.sha }} -o spdx-json=build-results/sbom.spdx.json
+          # Gebruik de Syft Docker image
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v $(pwd)/build-results:/output \
+            anchore/syft:latest \
+            flask-app:${{ github.sha }} -o cyclonedx-json=/output/sbom.cyclonedx.json -o spdx-json=/output/sbom.spdx.json
           
           echo "✅ SBOM generated successfully"
           echo "=== Package Summary ==="
-          syft flask-app:${{ github.sha }} -o table | head -n 20
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            anchore/syft:latest \
+            flask-app:${{ github.sha }} -o table | head -n 20
 
       - name: Scan image with Grype
         run: |
-          # Scan the image and save results (assume Grype is installed on runner)
-          grype flask-app:${{ github.sha }} -o json > build-results/grype-vulnerabilities.json
+          # Gebruik de Grype Docker image
+          mkdir -p build-results
+          
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            anchore/grype:latest \
+            flask-app:${{ github.sha }} -o json > build-results/grype-vulnerabilities.json
           
           # Display summary of findings
           echo "=== Vulnerability Summary ==="
