@@ -1,22 +1,17 @@
-name: Build and Container Security
+name: Build, Scan and Upload
 on:
-  workflow_run:
-    workflows: ["Source Code Security Scans"]
-    types:
-      - completed
   workflow_dispatch:
 
 jobs:
   build_and_scan_image:
     name: Build and Scan Docker Image
     runs-on: self-hosted
-    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Build Docker image
         uses: docker/build-push-action@v5
@@ -76,4 +71,91 @@ jobs:
             # exit 1
           else
             echo "✅ No critical vulnerabilities found in the Docker image"
+          fi
+
+  upload_to_defectdojo:
+    name: Upload to DefectDojo
+    needs: [build_and_scan_image]
+    runs-on: self-hosted
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: all-results
+
+      - name: Validate Results
+        id: validate
+        run: |
+          echo "=== Validating Scan Outputs ==="
+          SBOM_OK=false
+          GRYPE_OK=false
+
+          if [ -f all-results/build-results/sbom.cyclonedx.json ]; then
+            echo "SBOM (CycloneDX): ✅ OK"
+            SBOM_OK=true
+          else
+            echo "SBOM (CycloneDX): ❌ Missing"
+          fi
+          
+          if [ -f all-results/build-results/grype-vulnerabilities.json ]; then
+            echo "Grype: ✅ OK"
+            GRYPE_OK=true
+          else
+            echo "Grype: ❌ Missing"
+          fi
+
+          # Save results for later steps
+          echo "sbom_ok=$SBOM_OK" >> $GITHUB_OUTPUT
+          echo "grype_ok=$GRYPE_OK" >> $GITHUB_OUTPUT
+
+      - name: Upload to DefectDojo
+        env:
+          DEFECTDOJO_URL: ${{ secrets.DEFECTDOJO_URL }}
+          DEFECTDOJO_API_KEY: ${{ secrets.DEFECTDOJO_API_KEY }}
+          DEFECTDOJO_ENGAGEMENT_ID: ${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}
+        run: |
+          SCAN_DATE=$(date +%Y-%m-%d)
+          
+          # Enhanced error handling
+          upload_scan() {
+            local file=$1
+            local scan_type=$2
+            local scan_name=$3
+            
+            echo "⌛ Uploading $scan_name ($scan_type)"
+            
+            HTTP_CODE=$(curl -s -o response.txt -w "%{http_code}" \
+              -X POST "$DEFECTDOJO_URL/api/v2/import-scan/" \
+              -H "Authorization: Token $DEFECTDOJO_API_KEY" \
+              -F "scan_date=$SCAN_DATE" \
+              -F "scan_type=$scan_type" \
+              -F "engagement=$DEFECTDOJO_ENGAGEMENT_ID" \
+              -F "file=@$file")
+            
+            if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
+              echo "✅ Successfully uploaded $scan_name"
+              return 0
+            else
+              echo "❌ Upload failed for $scan_name with HTTP code $HTTP_CODE"
+              cat response.txt
+              return 1
+            fi
+          }
+
+          # Process scans
+          UPLOAD_FAILURES=0
+          
+          if [ "${{ steps.validate.outputs.sbom_ok }}" == "true" ]; then
+            upload_scan all-results/build-results/sbom.cyclonedx.json "CycloneDX Scan" "SBOM" || ((UPLOAD_FAILURES++))
+          fi
+          
+          if [ "${{ steps.validate.outputs.grype_ok }}" == "true" ]; then
+            upload_scan all-results/build-results/grype-vulnerabilities.json "Anchore Grype" "Grype" || ((UPLOAD_FAILURES++))
+          fi
+
+          echo "=== Upload Summary ==="
+          if [ "$UPLOAD_FAILURES" -eq 0 ]; then
+            echo "✅ All uploads processed successfully"
+          else
+            echo "⚠️ $UPLOAD_FAILURES upload(s) failed"
+            exit 1
           fi
