@@ -1,0 +1,7 @@
+image:
+  repository: ghcr.io/yourusername/flask-app
+  tag: latest
+
+service:
+  type: NodePort
+  nodePort: 30080
