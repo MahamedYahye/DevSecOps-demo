@@ -1,7 +1,7 @@
 replicaCount: 1
 
 image:
-  repository: ghcr.io/yourusername/flask-app
+  repository: ghcr.io/mahamedyahye/flask-app
   tag: latest
   pullPolicy: Always
 
