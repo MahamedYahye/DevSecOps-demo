@@ -395,6 +395,11 @@ jobs:
 
           
           # Commit and push the changes
-          git add helm/flask-app/values-staging.yaml
-          git commit -m "Update image tag to ${{ steps.tag.outputs.version }}"
-          git push
+          if git diff --quiet helm/flask-app/values-staging.yaml; then
+            echo "📦 values-staging.yaml is already up to date; nothing to commit."
+          else
+            echo "🔄 values-staging.yaml gewijzigd; commit & push starten..."
+            git add helm/flask-app/values-staging.yaml
+            git commit -m "Update image tag to ${{ steps.tag.outputs.version }}"
+            git push
+          fi
