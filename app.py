@@ -42,7 +42,7 @@ def home():
         <li><a href="/search">Zoeken</a></li>
         <li><a href="/profile">Profiel</a></li>
         <li><a href="/api/users">API - Gebruikers</a></li>
-        <li><a href="/Test">test</a></li>
+        <li><a href="/Test">tes!!!t</a></li>
 
     </ul>
     """
