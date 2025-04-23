@@ -1,87 +1,87 @@
-name: DAST Scan with OWASP ZAP
-on:
-  push:
-    branches:
-      - main
-  workflow_dispatch:
-    inputs:
-      target_url:
-        description: 'URL to scan'
-        required: true
-        default: 'http://192.168.49.2:3000'
+# name: DAST Scan with OWASP ZAP
+# on:
+#   push:
+#     branches:
+#       - main
+#   workflow_dispatch:
+#     inputs:
+#       target_url:
+#         description: 'URL to scan'
+#         required: true
+#         default: 'http://192.168.49.2:3000'
 
-jobs:
-  zap_scan:
-    name: ZAP DAST Scan
-    runs-on: self-hosted
+# jobs:
+#   zap_scan:
+#     name: ZAP DAST Scan
+#     runs-on: self-hosted
 
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+#     steps:
+#       - name: Checkout code
+#         uses: actions/checkout@v4
 
-      - name: Determine target URL
-        run: |
-          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            echo "TARGET_URL=${{ github.event.inputs.target_url }}" >> $GITHUB_ENV
-          else
-            echo "TARGET_URL=http://192.168.49.2:3000" >> $GITHUB_ENV
-          fi
-          echo "Using target URL: $TARGET_URL"
+#       - name: Determine target URL
+#         run: |
+#           if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+#             echo "TARGET_URL=${{ github.event.inputs.target_url }}" >> $GITHUB_ENV
+#           else
+#             echo "TARGET_URL=http://192.168.49.2:3000" >> $GITHUB_ENV
+#           fi
+#           echo "Using target URL: $TARGET_URL"
 
-      - name: Verify application availability
-        run: |
-          if curl -s "$TARGET_URL" > /dev/null; then
-            echo "✅ Application is accessible at $TARGET_URL"
-          else
-            echo "❌ Application is not accessible at $TARGET_URL"
-            exit 1
-          fi
+#       - name: Verify application availability
+#         run: |
+#           if curl -s "$TARGET_URL" > /dev/null; then
+#             echo "✅ Application is accessible at $TARGET_URL"
+#           else
+#             echo "❌ Application is not accessible at $TARGET_URL"
+#             exit 1
+#           fi
 
-      - name: Run ZAP Scan
-        run: |
-          mkdir -p zap-results
+#       - name: Run ZAP Scan
+#         run: |
+#           mkdir -p zap-results
 
-          docker run --rm --network host \
-            -v "$(pwd)/zap-results:/zap/wrk:rw" \
-            zaproxy/zap-stable:latest \
-            zap-baseline.py \
-              -t "$TARGET_URL" \
-              -r /zap/wrk/zap-report.html \
-              -x /zap/wrk/zap-report.xml \
-              -I \
-              -a \
-            > zap-scan.log 2>&1 || true
+#           docker run --rm --network host \
+#             -v "$(pwd)/zap-results:/zap/wrk:rw" \
+#             zaproxy/zap-stable:latest \
+#             zap-baseline.py \
+#               -t "$TARGET_URL" \
+#               -r /zap/wrk/zap-report.html \
+#               -x /zap/wrk/zap-report.xml \
+#               -I \
+#               -a \
+#             > zap-scan.log 2>&1 || true
 
-      - name: Upload scan log as artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: zap-scan-log
-          path: zap-scan.log
-          retention-days: 1
+#       - name: Upload scan log as artifact
+#         uses: actions/upload-artifact@v4
+#         with:
+#           name: zap-scan-log
+#           path: zap-scan.log
+#           retention-days: 1
 
-      - name: Upload scan results as artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: zap-results
-          path: zap-results/
-          retention-days: 30
+#       - name: Upload scan results as artifacts
+#         uses: actions/upload-artifact@v4
+#         with:
+#           name: zap-results
+#           path: zap-results/
+#           retention-days: 30
 
-      - name: Upload to DefectDojo
-        env:
-          DEFECTDOJO_URL: ${{ secrets.DEFECTDOJO_URL }}
-          DEFECTDOJO_API_KEY: ${{ secrets.DEFECTDOJO_API_KEY }}
-          DEFECTDOJO_ENGAGEMENT_ID: ${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}
-        run: |
-          if [ -f "zap-results/zap-report.xml" ]; then
-            echo "Uploading ZAP XML results to DefectDojo..."
-            curl -s -X POST "$DEFECTDOJO_URL/api/v2/import-scan/" \
-              -H "Authorization: Token $DEFECTDOJO_API_KEY" \
-              -F "scan_date=$(date +%Y-%m-%d)" \
-              -F "scan_type=ZAP Scan" \
-              -F "engagement=$DEFECTDOJO_ENGAGEMENT_ID" \
-              -F "file=@zap-results/zap-report.xml"
+#       - name: Upload to DefectDojo
+#         env:
+#           DEFECTDOJO_URL: ${{ secrets.DEFECTDOJO_URL }}
+#           DEFECTDOJO_API_KEY: ${{ secrets.DEFECTDOJO_API_KEY }}
+#           DEFECTDOJO_ENGAGEMENT_ID: ${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}
+#         run: |
+#           if [ -f "zap-results/zap-report.xml" ]; then
+#             echo "Uploading ZAP XML results to DefectDojo..."
+#             curl -s -X POST "$DEFECTDOJO_URL/api/v2/import-scan/" \
+#               -H "Authorization: Token $DEFECTDOJO_API_KEY" \
+#               -F "scan_date=$(date +%Y-%m-%d)" \
+#               -F "scan_type=ZAP Scan" \
+#               -F "engagement=$DEFECTDOJO_ENGAGEMENT_ID" \
+#               -F "file=@zap-results/zap-report.xml"
 
-            echo "✅ Results uploaded to DefectDojo successfully"
-          else
-            echo "❌ ZAP XML report not found in zap-results/ — skipping upload to DefectDojo"
-          fi
+#             echo "✅ Results uploaded to DefectDojo successfully"
+#           else
+#             echo "❌ ZAP XML report not found in zap-results/ — skipping upload to DefectDojo"
+#           fi
