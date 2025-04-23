@@ -19,7 +19,7 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      
+
       - name: Determine target URL
         run: |
           if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
@@ -45,11 +45,11 @@ jobs:
       - name: Run ZAP Scan
         run: |
           mkdir -p zap-results
-          
-          # Use the ZAP container for scanning
+
+          # Gebruik de correcte ZAP container image
           docker run --rm --network host \
             -v "$(pwd)/zap-results:/zap/wrk:rw" \
-            owasp/zap2docker-stable:latest \
+            zaproxy/zap-stable:latest \
             zap-baseline.py \
             -t $TARGET_URL \
             -r zap-report.html \
@@ -74,7 +74,7 @@ jobs:
           if [ -f "zap-results/zap-report.json" ]; then
             echo "Uploading ZAP results to DefectDojo..."
             SCAN_DATE=$(date +%Y-%m-%d)
-            
+
             curl -s -X POST "$DEFECTDOJO_URL/api/v2/import-scan/" \
               -H "Authorization: Token $DEFECTDOJO_API_KEY" \
               -F "scan_date=$SCAN_DATE" \
@@ -82,7 +82,7 @@ jobs:
               -F "engagement=$DEFECTDOJO_ENGAGEMENT_ID" \
               -F "file=@zap-results/zap-report.json" \
               -F "verified=true"
-            
+
             echo "✅ Results uploaded to DefectDojo successfully"
           else
             echo "❌ ZAP JSON report not found, skipping upload to DefectDojo"
