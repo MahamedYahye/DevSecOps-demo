@@ -41,17 +41,13 @@ jobs:
         run: |
           mkdir -p zap-results
 
-          # We mount de host-map zap-results in de container als /zap/wrk
-          # en stellen de working directory op /zap/wrk, zodat alle -r/-x outputs
-          # daar terechtkomen
           docker run --rm --network host \
             -v "$(pwd)/zap-results:/zap/wrk:rw" \
-            -w /zap/wrk \
             zaproxy/zap-stable:latest \
             zap-baseline.py \
               -t "$TARGET_URL" \
-              -r zap-report.html \
-              -x zap-report.xml \
+              -r /zap/wrk/zap-report.html \
+              -x /zap/wrk/zap-report.xml \
               -I \
               -a \
             > zap-scan.log 2>&1 || true
