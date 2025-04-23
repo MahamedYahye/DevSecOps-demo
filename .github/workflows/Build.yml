@@ -420,18 +420,20 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - name: Set up Git for Push
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git remote set-url origin "https://${{ github.actor }}:${{ secrets.ACTIONS_PUSH_TOKEN }}@github.com/${{ github.repository }}.git"
+        env:
+          ACTIONS_PUSH_TOKEN: ${{ secrets.ACTIONS_PUSH_TOKEN }}
 
       - name: Determine Next Semantic Version
         id: version
         run: |
-          # Voorbeeld: Lees de huidige versie uit een bestand genaamd VERSION
-          # Zorg ervoor dat dit bestand in je repository staat en de huidige semantische versie bevat (bijv. 1.0.0)
           if [ -f VERSION ]; then
             current_version=$(cat VERSION)
             IFS='.' read -r MAJOR MINOR PATCH <<< "$current_version"
-            # Voorbeeld: Verhoog de patch-versie bij elke commit naar main
             NEW_PATCH=$((PATCH + 1))
             VERSION="$MAJOR.$MINOR.$NEW_PATCH"
             echo "version=$VERSION" >> $GITHUB_OUTPUT
@@ -448,6 +450,9 @@ jobs:
             git commit -m "Initialize VERSION file to 1.0.0"
             git push
           fi
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Build Docker image
         uses: docker/build-push-action@v5
