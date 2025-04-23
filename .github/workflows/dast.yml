@@ -53,13 +53,13 @@ jobs:
             > zap-scan.log 2>&1 || true
 
       - name: Upload ZAP scan log
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: zap-scan-log
           path: zap-scan.log
 
       - name: Upload ZAP scan results
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: zap-results
           path: zap-results/
