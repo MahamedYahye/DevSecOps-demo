@@ -1,96 +1,85 @@
-name: DAST Scan with OWASP ZAP
+name: Full OWASP ZAP DAST Scan
+
 on:
-  # Run on push to main branch
   push:
     branches:
       - main
-  # Also allow manual triggering
   workflow_dispatch:
     inputs:
       target_url:
-        description: 'URL to scan'
+        description: 'Target URL for the ZAP scan'
         required: true
-        default: 'http://localhost:3000'
+        default: 'http://localhost:5000'
+  schedule:
+    - cron: '0 2 * * *'  # nightly at 02:00
 
 jobs:
-  zap_scan:
-    name: ZAP DAST Scan
+  zap-full-scan:
+    name: Full OWASP ZAP DAST Scan
     runs-on: self-hosted
+
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
 
-      - name: Determine target URL
+      - name: Set TARGET_URL
+        run: echo "TARGET_URL=${{ github.event.inputs.target_url }}" >> $GITHUB_ENV
+
+      - name: Wait for application to be available
         run: |
-          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            # Use the URL provided in the workflow_dispatch input
-            echo "TARGET_URL=${{ github.event.inputs.target_url }}" >> $GITHUB_ENV
-          else
-            # Default URL for push events
-            echo "TARGET_URL=http://localhost:3000" >> $GITHUB_ENV
-          fi
-          echo "Using target URL: $TARGET_URL"
+          for i in $(seq 1 30); do
+            if curl -s "$TARGET_URL" > /dev/null; then
+              echo "✅ Application is up at $TARGET_URL"
+              exit 0
+            fi
+            echo "⌛ Waiting for application ($i/30)..."
+            sleep 10
+          done
+          echo "❌ Application did not respond at $TARGET_URL"
+          exit 1
 
-      - name: Verify application availability
-        run: |
-          # Check if the app is accessible
-          if curl -s $TARGET_URL > /dev/null; then
-            echo "✅ Application is accessible at $TARGET_URL"
-          else
-            echo "❌ Application is not accessible at $TARGET_URL"
-            echo "Please ensure the application is running."
-            exit 1
-          fi
-
-      - name: Run ZAP Scan
+      - name: Run full ZAP scan
         run: |
           mkdir -p zap-results
-
-          # Gebruik de correcte ZAP container image en log de output
           docker run --rm --network host \
             -v "$(pwd)/zap-results:/zap/wrk:rw" \
             zaproxy/zap-stable:latest \
-            zap-baseline.py \
-            -t $TARGET_URL \
-            -r zap-report.html \
-            -x zap-report.xml \
-            -J zap-report.json \
-            -I \
-            -a > zap-scan.log 2>&1 || true
+            zap-full-scan.py \
+              -t "$TARGET_URL" \
+              -r zap-full-report.html \
+              -x zap-full-report.xml \
+              -I \
+              -a \
+            > zap-scan.log 2>&1 || true
 
-      - name: Upload scan log as artifact
-        uses: actions/upload-artifact@v4
+      - name: Upload ZAP scan log
+        uses: actions/upload-artifact@v3
         with:
           name: zap-scan-log
           path: zap-scan.log
-          retention-days: 1
 
-      - name: Upload scan results as artifacts
-        uses: actions/upload-artifact@v4
+      - name: Upload ZAP scan results
+        uses: actions/upload-artifact@v3
         with:
           name: zap-results
           path: zap-results/
-          retention-days: 30
 
-      - name: Upload to DefectDojo
+      - name: Import ZAP report into DefectDojo
         env:
           DEFECTDOJO_URL: ${{ secrets.DEFECTDOJO_URL }}
           DEFECTDOJO_API_KEY: ${{ secrets.DEFECTDOJO_API_KEY }}
           DEFECTDOJO_ENGAGEMENT_ID: ${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}
         run: |
-          if [ -f "zap-results/zap-report.json" ]; then
-            echo "Uploading ZAP results to DefectDojo..."
-            SCAN_DATE=$(date +%Y-%m-%d)
-
+          REPORT=zap-results/zap-full-report.xml
+          if [ -f "$REPORT" ]; then
+            echo "Uploading ZAP XML report to DefectDojo..."
             curl -s -X POST "$DEFECTDOJO_URL/api/v2/import-scan/" \
               -H "Authorization: Token $DEFECTDOJO_API_KEY" \
-              -F "scan_date=$SCAN_DATE" \
+              -F "scan_date=$(date +%Y-%m-%d)" \
               -F "scan_type=ZAP Scan" \
               -F "engagement=$DEFECTDOJO_ENGAGEMENT_ID" \
-              -F "file=@zap-results/zap-report.json" \
-              -F "verified=true"
-
-            echo "✅ Results uploaded to DefectDojo successfully"
+              -F "file=@$REPORT"
+            echo "✅ DefectDojo import complete"
           else
-            echo "❌ ZAP JSON report not found, skipping upload to DefectDojo"
+            echo "❌ ZAP XML report not found at $REPORT — skipping upload"
           fi
