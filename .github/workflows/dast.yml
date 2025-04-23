@@ -1,10 +1,8 @@
 name: DAST Scan with OWASP ZAP
 on:
-  # Run on push to main branch
   push:
     branches:
       - main
-  # Also allow manual triggering
   workflow_dispatch:
     inputs:
       target_url:
@@ -16,6 +14,7 @@ jobs:
   zap_scan:
     name: ZAP DAST Scan
     runs-on: self-hosted
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -31,7 +30,7 @@ jobs:
 
       - name: Verify application availability
         run: |
-          if curl -s $TARGET_URL > /dev/null; then
+          if curl -s "$TARGET_URL" > /dev/null; then
             echo "✅ Application is accessible at $TARGET_URL"
           else
             echo "❌ Application is not accessible at $TARGET_URL"
@@ -42,9 +41,12 @@ jobs:
         run: |
           mkdir -p zap-results
 
-          # Baseline scan, alleen XML export
+          # We mount de host-map zap-results in de container als /zap/wrk
+          # en stellen de working directory op /zap/wrk, zodat alle -r/-x outputs
+          # daar terechtkomen
           docker run --rm --network host \
             -v "$(pwd)/zap-results:/zap/wrk:rw" \
+            -w /zap/wrk \
             zaproxy/zap-stable:latest \
             zap-baseline.py \
               -t "$TARGET_URL" \
@@ -86,5 +88,5 @@ jobs:
 
             echo "✅ Results uploaded to DefectDojo successfully"
           else
-            echo "❌ ZAP XML report not found, skipping upload to DefectDojo"
+            echo "❌ ZAP XML report not found at $REPORT — skipping upload to DefectDojo"
           fi
