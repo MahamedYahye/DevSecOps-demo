@@ -8,7 +8,7 @@ on:
       target_url:
         description: 'URL to scan'
         required: true
-        default: 'http://localhost:3000'
+        default: 'http://192.168.49.2:3000'
 
 jobs:
   zap_scan:
@@ -24,7 +24,7 @@ jobs:
           if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
             echo "TARGET_URL=${{ github.event.inputs.target_url }}" >> $GITHUB_ENV
           else
-            echo "TARGET_URL=http://localhost:3000" >> $GITHUB_ENV
+            echo "TARGET_URL=http://192.168.49.2:3000" >> $GITHUB_ENV
           fi
           echo "Using target URL: $TARGET_URL"
 
