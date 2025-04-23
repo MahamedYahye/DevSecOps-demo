@@ -46,7 +46,7 @@ jobs:
         run: |
           mkdir -p zap-results
 
-          # Gebruik de correcte ZAP container image en genereer rapporten
+          # Gebruik de correcte ZAP container image en log de output
           docker run --rm --network host \
             -v "$(pwd)/zap-results:/zap/wrk:rw" \
             zaproxy/zap-stable:latest \
@@ -56,7 +56,14 @@ jobs:
             -x zap-report.xml \
             -J zap-report.json \
             -I \
-            -a || true
+            -a > zap-scan.log 2>&1 || true
+
+      - name: Upload scan log as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: zap-scan-log
+          path: zap-scan.log
+          retention-days: 1
 
       - name: Upload scan results as artifacts
         uses: actions/upload-artifact@v4
@@ -71,19 +78,19 @@ jobs:
           DEFECTDOJO_API_KEY: ${{ secrets.DEFECTDOJO_API_KEY }}
           DEFECTDOJO_ENGAGEMENT_ID: ${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}
         run: |
-          if [ -f "zap-results/zap-report.xml" ]; then
-            echo "Uploading ZAP XML results to DefectDojo..."
+          if [ -f "zap-results/zap-report.json" ]; then
+            echo "Uploading ZAP results to DefectDojo..."
             SCAN_DATE=$(date +%Y-%m-%d)
 
             curl -s -X POST "$DEFECTDOJO_URL/api/v2/import-scan/" \
               -H "Authorization: Token $DEFECTDOJO_API_KEY" \
               -F "scan_date=$SCAN_DATE" \
-              -F "scan_type=ZAP Scan"
+              -F "scan_type=ZAP Scan" \
               -F "engagement=$DEFECTDOJO_ENGAGEMENT_ID" \
-              -F "file=@zap-results/zap-report.xml" \
+              -F "file=@zap-results/zap-report.json" \
               -F "verified=true"
 
-            echo "✅ XML results uploaded to DefectDojo successfully"
+            echo "✅ Results uploaded to DefectDojo successfully"
           else
-            echo "❌ ZAP XML report not found, skipping upload to DefectDojo"
+            echo "❌ ZAP JSON report not found, skipping upload to DefectDojo"
           fi
