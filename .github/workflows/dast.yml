@@ -72,17 +72,16 @@ jobs:
           DEFECTDOJO_API_KEY: ${{ secrets.DEFECTDOJO_API_KEY }}
           DEFECTDOJO_ENGAGEMENT_ID: ${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}
         run: |
-          REPORT="zap-results/zap-report.xml"
-          if [ -f "$REPORT" ]; then
+          if [ -f "zap-results/zap-report.xml" ]; then
             echo "Uploading ZAP XML results to DefectDojo..."
             curl -s -X POST "$DEFECTDOJO_URL/api/v2/import-scan/" \
               -H "Authorization: Token $DEFECTDOJO_API_KEY" \
               -F "scan_date=$(date +%Y-%m-%d)" \
               -F "scan_type=ZAP Scan" \
               -F "engagement=$DEFECTDOJO_ENGAGEMENT_ID" \
-              -F "file=@$REPORT"
+              -F "file=@zap-results/zap-report.xml"
 
             echo "✅ Results uploaded to DefectDojo successfully"
           else
-            echo "❌ ZAP XML report not found at $REPORT — skipping upload to DefectDojo"
+            echo "❌ ZAP XML report not found in zap-results/ — skipping upload to DefectDojo"
           fi
