@@ -665,25 +665,6 @@ jobs:
           tags: |
             ghcr.io/mahamedyahye/flask-app:${{ steps.semver.outputs.version }}
             ghcr.io/mahamedyahye/flask-app:latest
-
-      - name: Update Helm Chart Values
-        run: |
-          # Clone the repository (shallow clone is fine for this purpose)
-          git config --global user.name "GitHub Actions"
-          git config --global user.email "actions@github.com"
-          
-          # Update the image tag in values-staging.yaml
-          sed -i "s/^tag: .*$/tag: ${{ steps.semver.outputs.version }}/" helm/flask-app/values-staging.yaml
-          
-          # Commit and push the changes
-          if git diff --quiet helm/flask-app/values-staging.yaml; then
-            echo "📦 values-staging.yaml is already up to date; nothing to commit."
-          else
-            echo "🔄 values-staging.yaml gewijzigd; commit & push starten..."
-            git add helm/flask-app/values-staging.yaml
-            git commit -m "Update image tag to ${{ steps.semver.outputs.version }}"
-            git push
-          fi
           
       - name: Create Git Tag
         run: |
