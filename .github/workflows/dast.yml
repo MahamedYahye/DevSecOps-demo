@@ -92,7 +92,7 @@ name: DAST Security Scan
 on:
   push:
     branches: [main]
-  workflow_dispatch:
+  workflow_dispatch:  # Voor handmatige triggers
 
 jobs:
   dast_scan:
@@ -101,39 +101,60 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Start kubectl port-forward
+      - name: Check and Start kubectl port-forward
+        id: start_port_forward
         run: |
-          echo "Starting kubectl port-forward..."
-          kubectl port-forward deployment/flask-app 3000:5000 &
-          sleep 5
-          
-          # Controleer of de port-forwarding werkt (zoals eerder)
-          for i in $(seq 1 10); do
-            curl -s http://localhost:3000 && break || {
-              echo "Attempt $i: Port-forward not ready yet. Retrying in 2 seconds..."
-              sleep 2
-            }
-          done
-          curl -s http://localhost:3000 || (echo "Failed to start kubectl port-forward" && exit 1)
+          # Functie om te controleren of een poort beschikbaar is
+          is_port_available() {
+            local port=$1
+            timeout 1 bash -c "cat < /dev/tcp/localhost/$port" > /dev/null 2>&1
+            return $?
+          }
 
-      - name: Create Docker network
-        run: |
-          docker network create zap-network
+          # Functie om kubectl port-forward te starten met foutafhandeling
+          start_port_forward() {
+            local target_port=$1
+            local attempts=$2
+            for ((i=1; i<=$attempts; i++)); do
+              if is_port_available $target_port; then
+                echo "Starting kubectl port-forward on port $target_port..."
+                kubectl port-forward deployment/flask-app $target_port:5000 &
+                sleep 5 # Wacht even
+                curl -s http://localhost:$target_port && echo "Port-forward success on port $target_port" && echo "APP_PORT=$target_port" >> $GITHUB_OUTPUT && echo "PORT_FORWARD_PID=$!" >> $GITHUB_OUTPUT && return 0
+              else
+                echo "Port $target_port is busy. Attempt $i of $attempts"
+                if [ $i -lt $attempts ]; then
+                  sleep 5
+                else
+                  echo "Failed to start kubectl port-forward after $attempts attempts"
+                  return 1
+                fi
+              fi
+            done
+          }
 
-      - name: Run ZAP scan
+          # Probeer de standaardpoort
+          if ! start_port_forward 3000 3; then
+            # Probeer een alternatieve poort
+            if ! start_port_forward 3001 3; then
+              echo "Failed to start kubectl port-forward on both ports 3000 and 3001"
+              exit 1
+            fi
+          fi
+
+      - name: Run OWASP ZAP scan
         continue-on-error: true
         run: |
           mkdir -p zap-output
 
-          echo "Starting OWASP ZAP scan..."
+          APP_PORT=${{ steps.start_port_forward.outputs.APP_PORT }}
+          echo "Starting OWASP ZAP baseline scan against localhost:$APP_PORT..."
 
-          # ZAP in een container met het aangepaste netwerk
           docker run --rm \
-            --network=zap-network \
-            --name=zap \
+            --network="host" \
             -v "$(pwd)/zap-output:/zap/wrk/" \
             zaproxy/zap-stable:latest zap-baseline.py \
-            -t http://host.docker.internal:3000 \ # Belangrijk: host.docker.internal
+            -t http://localhost:$APP_PORT \
             -r zap-report.html \
             -x zap-report.xml \
             -J zap-report.json \
@@ -149,14 +170,16 @@ jobs:
           fi
 
       - name: Stop kubectl port-forward
-        if: always()
+        if: always()  # Altijd uitvoeren, zelfs als de scan faalt
         run: |
-          # ... (zoals eerder)
-
-      - name: Remove Docker network
-        if: always()
-        run: |
-          docker network rm zap-network
+          echo "Stopping kubectl port-forward..."
+          PORT_FORWARD_PID=${{ steps.start_port_forward.outputs.PORT_FORWARD_PID }}
+          if [ -n "$PORT_FORWARD_PID" ]; then
+            kill $PORT_FORWARD_PID
+            echo "kubectl port-forward stopped"
+          else
+            echo "kubectl port-forward process ID not found"
+          fi
 
       - name: Upload scan results
         uses: actions/upload-artifact@v4
