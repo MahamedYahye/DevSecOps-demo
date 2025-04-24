@@ -1,0 +1,16 @@
+{% extends 'layout.html' %}
+{% block content %}
+    <div class="jumbotron">
+        <h1 class="display-4">Welkom bij de Kwetsbare Flask Applicatie</h1>
+        <p class="lead">Deze applicatie is ontworpen met opzettelijke kwetsbaarheden voor security testing en educatieve doeleinden.</p>
+        <hr class="my-4">
+        <p>Navigeer door de verschillende pagina's om de kwetsbaarheden te verkennen:</p>
+        <p class="lead">
+            <a class="btn btn-primary btn-lg" href="/login" role="button">Login</a>
+            <a class="btn btn-info btn-lg" href="/search" role="button">Zoeken</a>
+            <a class="btn btn-success btn-lg" href="/profile" role="button">Profiel</a>
+            <a class="btn btn-warning btn-lg" href="/api/users" role="button">API Gebruikers</a>
+            <a class="btn btn-danger btn-lg" href="/Test" role="button">Test!!!</a>
+        </p>
+    </div>
+{% endblock %}

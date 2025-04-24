@@ -1,4 +1,4 @@
-from flask import Flask, request, render_template_string, redirect, session, jsonify
+from flask import Flask, request, render_template, redirect, session, jsonify
 import sqlite3
 import os
 import time
@@ -34,18 +34,7 @@ def init_db():
 
 @app.route("/")
 def home():
-    return """
-    <h1>Kwetsbare Flask Applicatie</h1>
-    <p>Deze applicatie bevat bewust kwetsbaarheden voor security testing.</p>
-    <ul>
-        <li><a href="/login">Login</a></li>
-        <li><a href="/search">Zoeken</a></li>
-        <li><a href="/profile">Profiel</a></li>
-        <li><a href="/api/users">API - Gebruikers</a></li>
-        <li><a href="/Test">tes!!!t</a></li>
-
-    </ul>
-    """
+    return render_template("home.html")
 
 
 # Kwetsbaarheid 1: SQL Injectie
@@ -70,32 +59,14 @@ def login():
         else:
             error = "Ongeldige inloggegevens"
 
-    return """
-    <h1>Login</h1>
-    <form method="post">
-        <input type="text" name="username" placeholder="Gebruikersnaam"><br>
-        <input type="password" name="password" placeholder="Wachtwoord"><br>
-        <input type="submit" value="Inloggen">
-    </form>
-    """
+    return render_template("login.html", error=error)
 
 
 # Kwetsbaarheid 2: Cross-Site Scripting (XSS)
 @app.route("/search")
 def search():
     query = request.args.get("q", "")
-    result = f"<h2>Zoekresultaten voor: {query}</h2>"
-
-    # Onveilige weergave van gebruikersinvoer
-    return f"""
-    <h1>Zoeken</h1>
-    <form method="get">
-        <input type="text" name="q" value="{query}">
-        <input type="submit" value="Zoeken">
-    </form>
-    {result}
-    <p>Geen resultaten gevonden.</p>
-    """
+    return render_template("search.html", query=query)
 
 
 # Kwetsbaarheid 3: Server-Side Template Injection (SSTI)
@@ -103,15 +74,7 @@ def search():
 def profile():
     if "logged_in" not in session:
         return redirect("/login")
-
-    user_template = """
-    <h1>Welkom, {{ session.username }}!</h1>
-    <p>Dit is je profielpagina.</p>
-    <p>Ingelogd sinds: {{ time }}</p>
-    """
-
-    # Server-Side Template Injection
-    return render_template_string(user_template, time=time.ctime())
+    return render_template("profile.html", time=time.ctime())
 
 
 # Kwetsbaarheid 4: Insecure Direct Object Reference (IDOR)
@@ -147,6 +110,11 @@ def api_login():
         return jsonify({"status": "success", "user_id": result[0]})
     else:
         return jsonify({"status": "error", "message": "Invalid credentials"}), 401
+
+
+@app.route("/Test")
+def test_route():
+    return "<h1>Test!!!</h1>"
 
 
 if __name__ == "__main__":

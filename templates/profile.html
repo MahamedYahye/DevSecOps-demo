@@ -1,0 +1,12 @@
+{% extends 'layout.html' %}
+{% block content %}
+    {% if session['logged_in'] %}
+        <div class="profile-info">
+            <h1>Welkom, {{ session['username'] }}!</h1>
+            <p>Dit is je profielpagina.</p>
+            <p>Ingelogd sinds: {{ time }}</p>
+        </div>
+    {% else %}
+        <p>Je bent niet ingelogd. Ga naar de <a href="/login">loginpagina</a>.</p>
+    {% endif %}
+{% endblock %}

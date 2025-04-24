@@ -1,0 +1,14 @@
+{% extends 'layout.html' %}
+{% block content %}
+    <h1>Zoeken</h1>
+    <form method="get" class="form-inline">
+        <div class="form-group mr-2">
+            <input type="text" class="form-control" name="q" value="{{ query }}" placeholder="Zoekterm">
+        </div>
+        <button type="submit" class="btn btn-info">Zoeken</button>
+    </form>
+    <div class="mt-3">
+        <h2>Zoekresultaten voor: {{ query }}</h2>
+        <p>Geen resultaten gevonden.</p>
+    </div>
+{% endblock %}
