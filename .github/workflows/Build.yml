@@ -171,11 +171,255 @@
 #             exit 1
 #           fi
 # working
+# name: Build, Scan and Upload
+# on:
+#   push:
+#     branches: [main]
+#   workflow_dispatch:
+
+# jobs:
+#   build_and_scan_image:
+#     name: Build and Scan Docker Image
+#     runs-on: self-hosted
+#     steps:
+#       - name: Checkout code
+#         uses: actions/checkout@v3
+
+#       - name: Set up Docker Buildx
+#         uses: docker/setup-buildx-action@v3
+
+#       - name: Build Docker image
+#         uses: docker/build-push-action@v5
+#         with:
+#           context: .
+#           load: true
+#           tags: flask-app:${{ github.sha }}
+#           push: false
+
+#       - name: Generate SBOM with Syft
+#         run: |
+#           mkdir -p build-results
+          
+#           # Gebruik de Syft Docker image
+#           docker run --rm \
+#             -v /var/run/docker.sock:/var/run/docker.sock \
+#             -v $(pwd)/build-results:/output \
+#             anchore/syft:latest \
+#             flask-app:${{ github.sha }} -o cyclonedx-json=/output/sbom.cyclonedx.json -o spdx-json=/output/sbom.spdx.json
+          
+#           echo "✅ SBOM generated successfully"
+#           echo "=== Package Summary ==="
+#           docker run --rm \
+#             -v /var/run/docker.sock:/var/run/docker.sock \
+#             anchore/syft:latest \
+#             flask-app:${{ github.sha }} -o table | head -n 20
+
+#       - name: Scan image with Grype
+#         run: |
+#           # Gebruik de Grype Docker image
+#           mkdir -p build-results
+          
+#           docker run --rm \
+#             -v /var/run/docker.sock:/var/run/docker.sock \
+#             anchore/grype:latest \
+#             flask-app:${{ github.sha }} -o json > build-results/grype-vulnerabilities.json
+          
+#           # Display summary of findings
+#           echo "=== Vulnerability Summary ==="
+#           CRITICAL_COUNT=$(jq '.matches | map(select(.vulnerability.severity == "Critical")) | length' build-results/grype-vulnerabilities.json)
+#           HIGH_COUNT=$(jq '.matches | map(select(.vulnerability.severity == "High")) | length' build-results/grype-vulnerabilities.json)
+          
+#           echo "Critical vulnerabilities: $CRITICAL_COUNT"
+#           echo "High vulnerabilities: $HIGH_COUNT"
+          
+#           # Show top critical/high findings
+#           echo "=== Top Critical/High Vulnerabilities ==="
+#           jq -r '.matches | map(select(.vulnerability.severity == "Critical" or .vulnerability.severity == "High")) | .[0:10] | .[] | "\(.vulnerability.severity): \(.vulnerability.id) in \(.artifact.name) v\(.artifact.version)"' build-results/grype-vulnerabilities.json || echo "No critical/high vulnerabilities found"
+
+#       - name: Upload build results
+#         uses: actions/upload-artifact@v4
+#         if: always()
+#         with:
+#           name: build-results
+#           path: build-results/
+#           if-no-files-found: warn
+
+#       - name: Check for critical vulnerabilities
+#         id: vulnerability_check
+#         run: |
+#           CRITICAL_COUNT=$(jq '.matches | map(select(.vulnerability.severity == "Critical")) | length' build-results/grype-vulnerabilities.json)
+          
+#           if [ "$CRITICAL_COUNT" -gt 0 ]; then
+#             echo "⚠️ WARNING: $CRITICAL_COUNT critical vulnerabilities found in the Docker image"
+#             # Uncomment the line below to fail the build if critical vulnerabilities are found
+#             # echo "For production deployments, you should consider failing the build here"
+#             # exit 1
+#             echo "has_critical_vulnerabilities=true" >> $GITHUB_OUTPUT
+#           else
+#             echo "✅ No critical vulnerabilities found in the Docker image"
+#             echo "has_critical_vulnerabilities=false" >> $GITHUB_OUTPUT
+#           fi
+
+#   upload_to_defectdojo:
+#     name: Upload to DefectDojo
+#     needs: [build_and_scan_image]
+#     runs-on: self-hosted
+#     steps:
+#       - uses: actions/download-artifact@v4
+#         with:
+#           path: all-results
+
+#       - name: Validate Results
+#         id: validate
+#         run: |
+#           echo "=== Validating Scan Outputs ==="
+#           SBOM_OK=false
+#           GRYPE_OK=false
+
+#           if [ -f all-results/build-results/sbom.cyclonedx.json ]; then
+#             echo "SBOM (CycloneDX): ✅ OK"
+#             SBOM_OK=true
+#           else
+#             echo "SBOM (CycloneDX): ❌ Missing"
+#           fi
+          
+#           if [ -f all-results/build-results/grype-vulnerabilities.json ]; then
+#             echo "Grype: ✅ OK"
+#             GRYPE_OK=true
+#           else
+#             echo "Grype: ❌ Missing"
+#           fi
+
+#           # Save results for later steps
+#           echo "sbom_ok=$SBOM_OK" >> $GITHUB_OUTPUT
+#           echo "grype_ok=$GRYPE_OK" >> $GITHUB_OUTPUT
+
+#       - name: Upload to DefectDojo
+#         env:
+#           DEFECTDOJO_URL: ${{ secrets.DEFECTDOJO_URL }}
+#           DEFECTDOJO_API_KEY: ${{ secrets.DEFECTDOJO_API_KEY }}
+#           DEFECTDOJO_ENGAGEMENT_ID: ${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}
+#         run: |
+#           SCAN_DATE=$(date +%Y-%m-%d)
+          
+#           # Enhanced error handling
+#           upload_scan() {
+#             local file=$1
+#             local scan_type=$2
+#             local scan_name=$3
+            
+#             echo "⌛ Uploading $scan_name ($scan_type)"
+            
+#             HTTP_CODE=$(curl -s -o response.txt -w "%{http_code}" \
+#               -X POST "$DEFECTDOJO_URL/api/v2/import-scan/" \
+#               -H "Authorization: Token $DEFECTDOJO_API_KEY" \
+#               -F "scan_date=$SCAN_DATE" \
+#               -F "scan_type=$scan_type" \
+#               -F "engagement=$DEFECTDOJO_ENGAGEMENT_ID" \
+#               -F "file=@$file")
+            
+#             if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
+#               echo "✅ Successfully uploaded $scan_name"
+#               return 0
+#             else
+#               echo "❌ Upload failed for $scan_name with HTTP code $HTTP_CODE"
+#               cat response.txt
+#               return 1
+#             fi
+#           }
+
+#           # Process scans
+#           UPLOAD_FAILURES=0
+          
+#           if [ "${{ steps.validate.outputs.sbom_ok }}" == "true" ]; then
+#             upload_scan all-results/build-results/sbom.cyclonedx.json "CycloneDX Scan" "SBOM" || ((UPLOAD_FAILURES++))
+#           fi
+          
+#           if [ "${{ steps.validate.outputs.grype_ok }}" == "true" ]; then
+#             upload_scan all-results/build-results/grype-vulnerabilities.json "Anchore Grype" "Grype" || ((UPLOAD_FAILURES++))
+#           fi
+
+#           echo "=== Upload Summary ==="
+#           if [ "$UPLOAD_FAILURES" -eq 0 ]; then
+#             echo "✅ All uploads processed successfully"
+#           else
+#             echo "⚠️ $UPLOAD_FAILURES upload(s) failed"
+#             exit 1
+#           fi
+
+#   push_to_registry:
+#     name: Push Image to GitHub Container Registry
+#     needs: [build_and_scan_image, upload_to_defectdojo]
+#     runs-on: self-hosted
+#     # This job will only run if previous jobs were successful
+#     steps:
+#       - name: Checkout code
+#         uses: actions/checkout@v3
+
+#       - name: Set up Docker Buildx
+#         uses: docker/setup-buildx-action@v3
+
+#       - name: Login to GitHub Container Registry
+#         uses: docker/login-action@v3
+#         with:
+#           registry: ghcr.io
+#           username: ${{ github.actor }}
+#           password: ${{ secrets.PAT_GHCR }}
+
+#       - name: Generate Versioned Tag
+#         id: tag
+#         run: |
+#           # Create a version tag based on date and commit SHA
+#           VERSION=$(date +%Y%m%d)-${GITHUB_SHA::7}
+#           echo "version=$VERSION" >> $GITHUB_OUTPUT
+#           echo "Creating image with tag: $VERSION"
+
+#       - name: Build and Push Image
+#         uses: docker/build-push-action@v3
+#         with:
+#           context: .
+#           push: true
+#           tags: |
+#             ghcr.io/mahamedyahye/flask-app:${{ steps.tag.outputs.version }}
+#             ghcr.io/mahamedyahye/flask-app:latest
+
+#       - name: Update Helm Chart Values
+#         run: |
+#           # Clone the repository (shallow clone is fine for this purpose)
+#           git config --global user.name "GitHub Actions"
+#           git config --global user.email "actions@github.com"
+          
+#           # Update the image tag in values-staging.yaml
+          
+#           sed -i '' "s/^tag: .*$/tag: ${{ steps.tag.outputs.version }}/" helm/flask-app/values-staging.yaml
+
+          
+#           # Commit and push the changes
+#           if git diff --quiet helm/flask-app/values-staging.yaml; then
+#             echo "📦 values-staging.yaml is already up to date; nothing to commit."
+#           else
+#             echo "🔄 values-staging.yaml gewijzigd; commit & push starten..."
+#             git add helm/flask-app/values-staging.yaml
+#             git commit -m "Update image tag to ${{ steps.tag.outputs.version }}"
+#             git push
+#           fi
+
+
 name: Build, Scan and Upload
 on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      version_increment:
+        description: 'Type of version increment (patch, minor, major)'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
 
 jobs:
   build_and_scan_image:
@@ -184,6 +428,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 0  # Volledige geschiedenis ophalen voor versie tagging
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -355,6 +601,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 0  # Volledige geschiedenis ophalen voor versie tagging
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -366,13 +614,48 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.PAT_GHCR }}
 
-      - name: Generate Versioned Tag
-        id: tag
+      - name: Generate SemVer Tag
+        id: semver
         run: |
-          # Create a version tag based on date and commit SHA
-          VERSION=$(date +%Y%m%d)-${GITHUB_SHA::7}
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Creating image with tag: $VERSION"
+          # Bepaal welk type increment we willen doen
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            INCREMENT_TYPE="${{ github.event.inputs.version_increment }}"
+          else
+            # Default naar patch voor automatische runs
+            INCREMENT_TYPE="patch"
+          fi
+          
+          echo "Increment type: $INCREMENT_TYPE"
+          
+          # Haal de laatste versie tag op of begin bij v0.0.0
+          LATEST_TAG=$(git describe --tags --abbrev=0 --match "v*" 2>/dev/null || echo "v0.0.0")
+          LATEST_VERSION=${LATEST_TAG#v}
+          
+          echo "Latest version: $LATEST_VERSION"
+          
+          # Split versie in onderdelen
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$LATEST_VERSION"
+          
+          # Verhoog de juiste component op basis van increment type
+          case "$INCREMENT_TYPE" in
+            "major")
+              MAJOR=$((MAJOR+1))
+              MINOR=0
+              PATCH=0
+              ;;
+            "minor")
+              MINOR=$((MINOR+1))
+              PATCH=0
+              ;;
+            "patch")
+              PATCH=$((PATCH+1))
+              ;;
+          esac
+          
+          # Stel nieuwe versie samen
+          NEW_VERSION="$MAJOR.$MINOR.$PATCH"
+          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "Creating image with tag: $NEW_VERSION"
 
       - name: Build and Push Image
         uses: docker/build-push-action@v3
@@ -380,7 +663,7 @@ jobs:
           context: .
           push: true
           tags: |
-            ghcr.io/mahamedyahye/flask-app:${{ steps.tag.outputs.version }}
+            ghcr.io/mahamedyahye/flask-app:${{ steps.semver.outputs.version }}
             ghcr.io/mahamedyahye/flask-app:latest
 
       - name: Update Helm Chart Values
@@ -390,9 +673,7 @@ jobs:
           git config --global user.email "actions@github.com"
           
           # Update the image tag in values-staging.yaml
-          
-          sed -i '' "s/^tag: .*$/tag: ${{ steps.tag.outputs.version }}/" helm/flask-app/values-staging.yaml
-
+          sed -i "s/^tag: .*$/tag: ${{ steps.semver.outputs.version }}/" helm/flask-app/values-staging.yaml
           
           # Commit and push the changes
           if git diff --quiet helm/flask-app/values-staging.yaml; then
@@ -400,8 +681,13 @@ jobs:
           else
             echo "🔄 values-staging.yaml gewijzigd; commit & push starten..."
             git add helm/flask-app/values-staging.yaml
-            git commit -m "Update image tag to ${{ steps.tag.outputs.version }}"
+            git commit -m "Update image tag to ${{ steps.semver.outputs.version }}"
             git push
           fi
-
-
+          
+      - name: Create Git Tag
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git tag -a "v${{ steps.semver.outputs.version }}" -m "Release v${{ steps.semver.outputs.version }}"
+          git push origin "v${{ steps.semver.outputs.version }}"
