@@ -85,3 +85,66 @@
 #           else
 #             echo "❌ ZAP XML report not found in zap-results/ — skipping upload to DefectDojo"
 #           fi
+
+
+name: DAST Security Scan
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:  # Voor handmatige triggers
+
+jobs:
+  dast_scan:
+    name: Run DAST Scan
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: ZAP Scan
+        run: |
+          mkdir -p zap-output
+          
+          echo "Starting OWASP ZAP baseline scan against localhost:3000..."
+          
+          docker run --rm \
+            --network="host" \
+            -v "$(pwd)/zap-output:/zap/wrk/" \
+            zaproxy/zap-stable:latest zap-baseline.py \
+            -t http://localhost:3000 \
+            -r zap-report.html \
+            -x zap-report.xml \
+            -J zap-report.json \
+            -a
+          
+          echo "=== ZAP Scan Complete ==="
+          
+          # Genereer een samenvatting van de resultaten
+          if [ -f "zap-output/zap-report.html" ]; then
+            echo "Generating scan summary..."
+            
+            # Tel bevindingen per risiconiveau
+            HIGH_COUNT=$(grep -o "High" zap-output/zap-report.html | wc -l)
+            MEDIUM_COUNT=$(grep -o "Medium" zap-output/zap-report.html | wc -l)
+            LOW_COUNT=$(grep -o "Low" zap-output/zap-report.html | wc -l)
+            
+            echo "===== DAST Scan Results ====="
+            echo "High risk findings: $HIGH_COUNT"
+            echo "Medium risk findings: $MEDIUM_COUNT"
+            echo "Low risk findings: $LOW_COUNT"
+            echo "=============================="
+            
+            # Toon enkele details van de bevindingen
+            if [ "$HIGH_COUNT" -gt 0 ] || [ "$MEDIUM_COUNT" -gt 0 ]; then
+              echo "Top findings summary:"
+              grep -B 2 -A 5 "Risk: High\|Risk: Medium" zap-output/zap-report.html | head -n 20
+            fi
+          else
+            echo "Error: No HTML report was generated."
+          fi
+      
+      - name: Upload scan results
+        uses: actions/upload-artifact@v4
+        with:
+          name: zap-scan-results
+          path: zap-output/
