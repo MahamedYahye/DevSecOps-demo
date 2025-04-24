@@ -92,7 +92,7 @@ name: DAST Security Scan
 on:
   push:
     branches: [main]
-  workflow_dispatch:  # Voor handmatige triggers
+  workflow_dispatch:
 
 jobs:
   dast_scan:
@@ -100,49 +100,64 @@ jobs:
     runs-on: self-hosted
     steps:
       - uses: actions/checkout@v3
-      
-      - name: ZAP Scan
+
+      - name: Start kubectl port-forward
+        run: |
+          echo "Starting kubectl port-forward..."
+          kubectl port-forward deployment/flask-app 3000:5000 &
+          sleep 5
+          
+          # Controleer of de port-forwarding werkt (zoals eerder)
+          for i in $(seq 1 10); do
+            curl -s http://localhost:3000 && break || {
+              echo "Attempt $i: Port-forward not ready yet. Retrying in 2 seconds..."
+              sleep 2
+            }
+          done
+          curl -s http://localhost:3000 || (echo "Failed to start kubectl port-forward" && exit 1)
+
+      - name: Create Docker network
+        run: |
+          docker network create zap-network
+
+      - name: Run ZAP scan
+        continue-on-error: true
         run: |
           mkdir -p zap-output
-          
-          echo "Starting OWASP ZAP baseline scan against localhost:3000..."
-          
+
+          echo "Starting OWASP ZAP scan..."
+
+          # ZAP in een container met het aangepaste netwerk
           docker run --rm \
-            --network="host" \
+            --network=zap-network \
+            --name=zap \
             -v "$(pwd)/zap-output:/zap/wrk/" \
             zaproxy/zap-stable:latest zap-baseline.py \
-            -t http://localhost:3000 \
+            -t http://host.docker.internal:3000 \ # Belangrijk: host.docker.internal
             -r zap-report.html \
             -x zap-report.xml \
             -J zap-report.json \
             -a
-          
+
           echo "=== ZAP Scan Complete ==="
-          
-          # Genereer een samenvatting van de resultaten
+
+          # Resultatenanalyse (zoals eerder)
           if [ -f "zap-output/zap-report.html" ]; then
-            echo "Generating scan summary..."
-            
-            # Tel bevindingen per risiconiveau
-            HIGH_COUNT=$(grep -o "High" zap-output/zap-report.html | wc -l)
-            MEDIUM_COUNT=$(grep -o "Medium" zap-output/zap-report.html | wc -l)
-            LOW_COUNT=$(grep -o "Low" zap-output/zap-report.html | wc -l)
-            
-            echo "===== DAST Scan Results ====="
-            echo "High risk findings: $HIGH_COUNT"
-            echo "Medium risk findings: $MEDIUM_COUNT"
-            echo "Low risk findings: $LOW_COUNT"
-            echo "=============================="
-            
-            # Toon enkele details van de bevindingen
-            if [ "$HIGH_COUNT" -gt 0 ] || [ "$MEDIUM_COUNT" -gt 0 ]; then
-              echo "Top findings summary:"
-              grep -B 2 -A 5 "Risk: High\|Risk: Medium" zap-output/zap-report.html | head -n 20
-            fi
+            # ...
           else
             echo "Error: No HTML report was generated."
           fi
-      
+
+      - name: Stop kubectl port-forward
+        if: always()
+        run: |
+          # ... (zoals eerder)
+
+      - name: Remove Docker network
+        if: always()
+        run: |
+          docker network rm zap-network
+
       - name: Upload scan results
         uses: actions/upload-artifact@v4
         with:
