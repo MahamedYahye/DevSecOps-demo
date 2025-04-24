@@ -134,9 +134,9 @@ jobs:
           }
 
           # Probeer de standaardpoort
-          if ! start_port_forward 3000 3; then
+          if ! start_port_forward 3050 3; then
             # Probeer een alternatieve poort
-            if ! start_port_forward 3001 3; then
+            if ! start_port_forward 3051 3; then
               echo "Failed to start kubectl port-forward on both ports 3000 and 3001"
               exit 1
             fi
