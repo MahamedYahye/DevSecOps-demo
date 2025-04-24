@@ -1,3 +1,23 @@
+# FROM python:3.9-slim
+
+# WORKDIR /app
+
+# COPY requirements.txt .
+# RUN pip install --no-cache-dir -r requirements.txt
+
+# COPY app.py .
+
+# RUN mkdir -p /app/data
+
+# ENV PYTHONDONTWRITEBYTECODE=1
+# ENV PYTHONUNBUFFERED=1
+# ENV PORT=5000
+
+# VOLUME ["/app/data"]
+
+# CMD ["python", "app.py"]
+
+# EXPOSE 5000
 FROM python:3.9-slim
 
 WORKDIR /app
@@ -5,7 +25,8 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . .  # Kopieer de hele huidige directory naar /app in de image
+COPY app.py .
+COPY templates /app/templates  # Kopieer de 'templates' map naar /app/templates
 
 RUN mkdir -p /app/data
 
