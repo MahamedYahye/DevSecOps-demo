@@ -1,256 +1,213 @@
+name: Advanced Security Scans
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
 
-# name: Security Scans
-# on:
-#   push:
-#     branches: [ main, master ]
-#   pull_request:
-#     branches: [ main, master ]
-#   workflow_dispatch:
+jobs:
+  semgrep:
+    name: Semgrep (Full Security Scan)
+    runs-on: self-hosted
+    outputs:
+      scan_status: ${{ steps.semgrep_run.outputs.scan_status }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Run Semgrep
+        id: semgrep_run
+        run: |
+          mkdir -p semgrep-results
+          docker run --rm --security-opt=no-new-privileges \
+            -v $(pwd):/src \
+            -e SEMGREP_APP_TOKEN=${{ secrets.SEMGREP_APP_TOKEN }} \
+            -e SEMGREP_REPO_URL=https://github.com/${{ github.repository }} \
+            semgrep/semgrep:latest \
+            bash -c "cd /src && semgrep --config=auto --json > /src/semgrep-results/semgrep-results.json && semgrep --config=auto --sarif > /src/semgrep-results/scan.sarif"
 
-# permissions:
-#   contents: read
-#   security-events: write
+          if [ -f semgrep-results/semgrep-results.json ] && [ -f semgrep-results/scan.sarif ]; then
+            echo "✅ Semgrep output files created successfully"
+            echo "scan_status=success" >> $GITHUB_OUTPUT
+            echo "=== Top 10 Findings ==="
+            jq -r '.results[] | "\(.extra.severity): \(.extra.message)"' semgrep-results/semgrep-results.json 2>/dev/null | head -n 10 || echo "No findings or error parsing results"
+          else
+            echo "⚠️ Warning: Some Semgrep output files are missing"
+            echo "scan_status=incomplete" >> $GITHUB_OUTPUT
+          fi
 
-# # Globale omgevingsvariabelen voor tool versies
-# env:
-#   SEMGREP_VERSION: "1.76.0"
-#   GITLEAKS_VERSION: "v8.16.3"
-#   SYFT_VERSION: "v0.93.0"
-#   GRYPE_VERSION: "v0.73.0"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: semgrep-results
+          path: semgrep-results/
+          if-no-files-found: warn
 
-# jobs:
-#   # Parallel job voor Semgrep
-#   semgrep-scan:
-#     name: Semgrep SAST
-#     runs-on: self-hosted
-#     outputs:
-#       scan_status: ${{ steps.semgrep_run.outputs.scan_status }}
-#     steps:
-#       - name: Checkout code
-#         uses: actions/checkout@v4  # Upgrade naar v4
-#         with:
-#           fetch-depth: 0
+  bandit_scan:
+    name: Bandit (Full Python Audit)
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
 
-#       - name: Run Semgrep
-#         id: semgrep_run
-#         run: |
-#           docker run --rm --security-opt=no-new-privileges \
-#             -v $(pwd):/src \
-#             -e SEMGREP_APP_TOKEN=${{ secrets.SEMGREP_APP_TOKEN }} \
-#             -e SEMGREP_REPO_URL=https://github.com/${{ github.repository }} \
-#             semgrep/semgrep:${{ env.SEMGREP_VERSION }} \
-#             bash -c "cd /src && semgrep --config=auto --json > semgrep-results.json && semgrep --config=auto --sarif > semgrep.sarif"
+      - name: Run Aggressive Bandit Scan
+        run: |
+          mkdir -p bandit-results
+          docker run --rm -v "${{ github.workspace }}:/src" python:3.11-slim bash -c \
+            "pip install bandit -q && cd /src && \
+             bandit -r . -f json -o /src/bandit-results/report.json \
+                   --skip B101,B104 \
+                   --ignore-nosec || exit_code=\$?"
 
-#           if [ -f semgrep-results.json ] && [ -f semgrep.sarif ]; then
-#             echo "Semgrep output files created successfully"
-#             echo "scan_status=success" >> $GITHUB_OUTPUT
-#           else
-#             echo "Warning: Some Semgrep output files are missing"
-#             echo "scan_status=incomplete" >> $GITHUB_OUTPUT
-#           fi
+          # Check if output file was created regardless of exit code
+          if [ -f bandit-results/report.json ]; then
+            echo "✅ Bandit scan completed and generated report"
+            echo "=== Critical Findings ==="
+            jq -r '.results[] | select(.issue_severity == "HIGH") | .issue_text' bandit-results/report.json 2>/dev/null | sort | uniq -c || echo "No critical findings or error parsing results"
+          else
+            echo "❌ Bandit scan failed to produce output"
+            exit 1
+          fi
 
-#       - name: Upload to GitHub Security
-#         uses: github/codeql-action/upload-sarif@v3
-#         with:
-#           sarif_file: semgrep.sarif
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bandit-results
+          path: bandit-results/
+          if-no-files-found: warn
 
-#       - name: Upload Semgrep results
-#         uses: actions/upload-artifact@v4  # Upgrade naar v4
-#         with:
-#           name: semgrep-results
-#           path: |
-#             semgrep-results.json
-#             semgrep.sarif
-#           retention-days: 5
-#           if-no-files-found: warn
+  gitleaks:
+    name: GitLeaks (Deep Secrets Scan)
+    runs-on: self-hosted
+    env:
+      GITLEAKS_VERSION: v8.18.1
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for secrets detection
 
-#   # Parallel job voor Gitleaks
-#   gitleaks-scan:
-#     name: Gitleaks Secret Detection
-#     runs-on: self-hosted
-#     outputs:
-#       scan_status: ${{ steps.gitleaks_run.outputs.scan_status }}
-#     steps:
-#       - name: Checkout code
-#         uses: actions/checkout@v4  # Upgrade naar v4
-#         with:
-#           fetch-depth: 0
+      - name: Run Thorough GitLeaks Scan
+        run: |
+          mkdir -p gitleaks-results
+          docker run --rm -v "${{ github.workspace }}:/path" zricethezav/gitleaks:$GITLEAKS_VERSION \
+            detect --source="/path" \
+                  --report-format=json \
+                  --report-path=/path/gitleaks-results/report.json \
+                  --verbose \
+                  --redact \
+                  --exit-code=0
 
-#       - name: Run Gitleaks
-#         id: gitleaks_run
-#         run: |
-#           docker run --rm --security-opt=no-new-privileges \
-#             -v $(pwd):/path \
-#             zricethezav/gitleaks:${{ env.GITLEAKS_VERSION }} detect \
-#             --source="/path" --report-format json --report-path=/path/gitleaks-report.json || true
+          # Check if output file was created
+          if [ -f gitleaks-results/report.json ]; then
+            echo "✅ GitLeaks scan completed successfully"
+            echo "=== Potential Secrets ==="
+            jq -r '.[] | "\(.Description): \(.Secret)"' gitleaks-results/report.json | head -n 20 || echo "No findings or error parsing results"
+          else
+            echo "⚠️ GitLeaks did not find any issues or failed to produce output"
+          fi
 
-#           if [ -f gitleaks-report.json ]; then
-#             echo "## Gitleaks Findings" >> $GITHUB_STEP_SUMMARY
-#             cat gitleaks-report.json | jq . >> $GITHUB_STEP_SUMMARY || echo "Failed to display Gitleaks findings"
-#             echo "scan_status=success" >> $GITHUB_OUTPUT
-#           else
-#             echo "Warning: Gitleaks output file is missing"
-#             echo "scan_status=incomplete" >> $GITHUB_OUTPUT
-#           fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gitleaks-results
+          path: gitleaks-results/
+          if-no-files-found: warn
 
-#       - name: Upload Gitleaks results
-#         uses: actions/upload-artifact@v4  # Upgrade naar v4
-#         with:
-#           name: gitleaks-results
-#           path: gitleaks-report.json
-#           retention-days: 5
-#           if-no-files-found: warn
+  upload_to_defectdojo:
+    name: Upload to DefectDojo
+    needs: [semgrep, bandit_scan, gitleaks]
+    runs-on: self-hosted
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: all-results
 
-#   # Parallel job voor Syft & Grype
-#   sbom-vulnerability-scan:
-#     name: SBOM & Vulnerability Scan
-#     runs-on: self-hosted
-#     outputs:
-#       syft_status: ${{ steps.syft_run.outputs.scan_status }}
-#       grype_status: ${{ steps.grype_run.outputs.scan_status }}
-#     steps:
-#       - name: Checkout code
-#         uses: actions/checkout@v4  # Upgrade naar v4
-#         with:
-#           fetch-depth: 0
+      - name: Validate Results
+        id: validate
+        run: |
+          echo "=== Validating Scan Outputs ==="
+          SEMGREP_OK=false
+          BANDIT_OK=false
+          GITLEAKS_OK=false
 
-#       - name: Run Syft (SBOM Generator)
-#         id: syft_run
-#         run: |
-#           docker run --rm --security-opt=no-new-privileges \
-#             -v $(pwd):/src \
-#             anchore/syft:${{ env.SYFT_VERSION }} \
-#             /src -o json=/src/syft-sbom.json -o spdx-json=/src/syft-spdx.json
+          if [ -f all-results/semgrep-results/scan.sarif ]; then
+            echo "Semgrep:  OK"
+            SEMGREP_OK=true
+          else
+            echo "Semgrep:  Missing"
+          fi
 
-#           if [ -f syft-sbom.json ] && [ -f syft-spdx.json ]; then
-#             echo "Syft SBOM files created successfully"
-#             echo "## SBOM Summary" >> $GITHUB_STEP_SUMMARY
-#             cat syft-sbom.json | jq '.artifacts | length' | xargs echo "Total packages detected: " >> $GITHUB_STEP_SUMMARY
-#             echo "scan_status=success" >> $GITHUB_OUTPUT
-#           else
-#             echo "Warning: Syft output files are missing"
-#             echo "scan_status=incomplete" >> $GITHUB_OUTPUT
-#           fi
+          if [ -f all-results/bandit-results/report.json ]; then
+            echo "Bandit:  OK"
+            BANDIT_OK=true
+          else
+            echo "Bandit:  Missing"
+          fi
 
-#       - name: Run Grype (Vulnerability Scanner)
-#         id: grype_run
-#         run: |
-#           docker run --rm --security-opt=no-new-privileges \
-#             -v $(pwd):/src \
-#             anchore/grype:${{ env.GRYPE_VERSION }} \
-#             sbom:/src/syft-sbom.json -o json=/src/grype-vulnerabilities.json
+          if [ -f all-results/gitleaks-results/report.json ]; then
+            echo "GitLeaks:  OK"
+            GITLEAKS_OK=true
+          else
+            echo "GitLeaks:  Missing"
+          fi
 
-#           if [ -f grype-vulnerabilities.json ]; then
-#             echo "Grype vulnerability report created successfully"
-#             echo "## Vulnerability Summary" >> $GITHUB_STEP_SUMMARY
-#             cat grype-vulnerabilities.json | jq '.matches | length' | xargs echo "Total vulnerabilities found: " >> $GITHUB_STEP_SUMMARY
-#             cat grype-vulnerabilities.json | jq '.matches[] | .vulnerability.severity' | sort | uniq -c | sort -r >> $GITHUB_STEP_SUMMARY
-#             echo "scan_status=success" >> $GITHUB_OUTPUT
-#           else
-#             echo "Warning: Grype output file is missing"
-#             echo "scan_status=incomplete" >> $GITHUB_OUTPUT
-#           fi
+          # Save results for later steps
+          echo "semgrep_ok=$SEMGREP_OK" >> $GITHUB_OUTPUT
+          echo "bandit_ok=$BANDIT_OK" >> $GITHUB_OUTPUT
+          echo "gitleaks_ok=$GITLEAKS_OK" >> $GITHUB_OUTPUT
 
-#       - name: Upload SBOM & Vulnerability results
-#         uses: actions/upload-artifact@v4  # Upgrade naar v4
-#         with:
-#           name: sbom-vulnerability-results
-#           path: |
-#             syft-sbom.json
-#             syft-spdx.json
-#             grype-vulnerabilities.json
-#           retention-days: 5
-#           if-no-files-found: warn
+      - name: Upload to DefectDojo
+        env:
+          DEFECTDOJO_URL: ${{ secrets.DEFECTDOJO_URL }}
+          DEFECTDOJO_API_KEY: ${{ secrets.DEFECTDOJO_API_KEY }}
+          DEFECTDOJO_ENGAGEMENT_ID: ${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}
+        run: |
+          SCAN_DATE=$(date +%Y-%m-%d)
 
-#   # Job voor het uploaden naar DefectDojo - wacht op voltooiing van alle scans
-#   upload-to-defectdojo:
-#     name: Upload to DefectDojo
-#     needs: [semgrep-scan, gitleaks-scan, sbom-vulnerability-scan]
-#     if: github.event_name == 'push'
-#     runs-on: self-hosted
-#     env:
-#       SEMGREP_STATUS: ${{ needs.semgrep-scan.outputs.scan_status }}
-#       GITLEAKS_STATUS: ${{ needs.gitleaks-scan.outputs.scan_status }}
-#       SYFT_STATUS: ${{ needs.sbom-vulnerability-scan.outputs.syft_status }}
-#       GRYPE_STATUS: ${{ needs.sbom-vulnerability-scan.outputs.grype_status }}
-#     steps:
-#       - name: Download Semgrep results
-#         uses: actions/download-artifact@v4  # Upgrade naar v4
-#         with:
-#           name: semgrep-results
-#           path: semgrep-results
+          # Enhanced error handling
+          upload_scan() {
+            local file=$1
+            local scan_type=$2
+            local scan_name=$3
 
-#       - name: Download Gitleaks results
-#         uses: actions/download-artifact@v4  # Upgrade naar v4
-#         with:
-#           name: gitleaks-results
-#           path: gitleaks-results
+            echo "⌛ Uploading $scan_name ($scan_type)"
 
-#       - name: Download SBOM & Vulnerability results
-#         uses: actions/download-artifact@v4  # Upgrade naar v4
-#         with:
-#           name: sbom-vulnerability-results
-#           path: sbom-vulnerability-results
+            HTTP_CODE=$(curl -s -o response.txt -w "%{http_code}" \
+              -X POST "$DEFECTDOJO_URL/api/v2/import-scan/" \
+              -H "Authorization: Token $DEFECTDOJO_API_KEY" \
+              -F "scan_date=$SCAN_DATE" \
+              -F "scan_type=$scan_type" \
+              -F "engagement=$DEFECTDOJO_ENGAGEMENT_ID" \
+              -F "file=@$file")
 
-#       - name: Report scan status
-#         run: |
-#           echo "## Scan Statuses" >> $GITHUB_STEP_SUMMARY
-#           echo "- Semgrep: $SEMGREP_STATUS" >> $GITHUB_STEP_SUMMARY
-#           echo "- Gitleaks: $GITLEAKS_STATUS" >> $GITHUB_STEP_SUMMARY
-#           echo "- Syft: $SYFT_STATUS" >> $GITHUB_STEP_SUMMARY
-#           echo "- Grype: $GRYPE_STATUS" >> $GITHUB_STEP_SUMMARY
+            if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
+              echo "✅ Successfully uploaded $scan_name"
+              return 0
+            else
+              echo "❌ Upload failed for $scan_name with HTTP code $HTTP_CODE"
+              cat response.txt
+              return 1
+            fi
+          }
 
-#       - name: Upload to DefectDojo
-#         run: |
-#           # Functie voor uploads
-#           upload_to_defectdojo() {
-#             local file=$1
-#             local scan_type=$2
-#             local description=$3
-#             local status=$4
+          # Process all scans
+          UPLOAD_FAILURES=0
 
-#             if [ "$status" != "success" ]; then
-#               echo "Skipping $description upload as the scan status is not successful"
-#               return 1
-#             fi
+          if [ "${{ steps.validate.outputs.semgrep_ok }}" == "true" ]; then
+            upload_scan all-results/semgrep-results/scan.sarif "SARIF" "Semgrep" || ((UPLOAD_FAILURES++))
+          fi
 
-#             if [ ! -f "$file" ]; then
-#               echo "$file not found, skipping upload"
-#               return 1
-#             fi
+          if [ "${{ steps.validate.outputs.bandit_ok }}" == "true" ]; then
+            upload_scan all-results/bandit-results/report.json "Bandit Scan" "Bandit" || ((UPLOAD_FAILURES++))
+          fi
 
-#             echo "Uploading $description to DefectDojo..."
-#             RESULT=$(curl -s -w "\n%{http_code}" -X POST \
-#               -H "Authorization: Token ${{ secrets.DEFECTDOJO_API_KEY }}" \
-#               -F "scan_date=$(date +%Y-%m-%d)" \
-#               -F "engagement=${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}" \
-#               -F "file=@$file" \
-#               -F "scan_type=$scan_type" \
-#               -F "close_old_findings=true" \
-#               ${{ secrets.DEFECTDOJO_URL }}/api/v2/import-scan/)
-#             STATUS_CODE=$(echo "$RESULT" | tail -n1)
-#             CONTENT=$(echo "$RESULT" | sed '$d')
-#             echo "$description upload status: $STATUS_CODE"
-#             echo "Response: $CONTENT"
+          if [ "${{ steps.validate.outputs.gitleaks_ok }}" == "true" ]; then
+            upload_scan all-results/gitleaks-results/report.json "Gitleaks Scan" "GitLeaks" || ((UPLOAD_FAILURES++))
+          fi
 
-#             # Add to GitHub summary
-#             echo "## $description Upload" >> $GITHUB_STEP_SUMMARY
-#             echo "- Status code: $STATUS_CODE" >> $GITHUB_STEP_SUMMARY
-#             if [ "$STATUS_CODE" == "201" ]; then
-#               echo "- Result: Success ✅" >> $GITHUB_STEP_SUMMARY
-#             else
-#               echo "- Result: Failed ❌" >> $GITHUB_STEP_SUMMARY
-#               echo "- Error: $CONTENT" >> $GITHUB_STEP_SUMMARY
-#             fi
-#           }
-
-#           # Execute uploads with status check
-#           upload_to_defectdojo "semgrep-results/semgrep-results.json" "Semgrep JSON Report" "Semgrep" "$SEMGREP_STATUS"
-#           upload_to_defectdojo "gitleaks-results/gitleaks-report.json" "Gitleaks Scan" "Gitleaks" "$GITLEAKS_STATUS"
-#           upload_to_defectdojo "sbom-vulnerability-results/syft-sbom.json" "Anchore Enterprise Policy Violation" "Syft SBOM" "$SYFT_STATUS"
-#           upload_to_defectdojo "sbom-vulnerability-results/grype-vulnerabilities.json" "Anchore Grype" "Grype Vulnerabilities" "$GRYPE_STATUS"
-
-
-
-
-
+          echo "=== Upload Summary ==="
+          if [ "$UPLOAD_FAILURES" -eq 0 ]; then
+            echo "✅ All uploads processed successfully"
+          else
+            echo "⚠️ $UPLOAD_FAILURES upload(s) failed"
+            exit 1
+          fi

@@ -1,12 +1,504 @@
 {% extends 'layout.html' %}
 {% block content %}
     {% if session['logged_in'] %}
-        <div class="profile-info">
-            <h1>Welkom, {{ session['username'] }}!</h1>
-            <p>Dit is je profielpagina.</p>
-            <p>Ingelogd sinds: {{ time }}</p>
+        <div class="profile-container">
+            <div class="profile-header">
+                <div class="profile-avatar">
+                    <i class="fas fa-user-circle"></i>
+                </div>
+                <h1>Welkom, <span class="username">{{ session['username'] }}</span>!</h1>
+                <div class="profile-time">
+                    <i class="fas fa-clock me-2"></i> Ingelogd sinds: {{ time }}
+                </div>
+            </div>
+
+            <div class="profile-content">
+                <div class="row">
+                    <div class="col-lg-6">
+                        <div class="info-card">
+                            <div class="card-header">
+                                <i class="fas fa-info-circle"></i>
+                                <h3>Gebruikersinfo</h3>
+                            </div>
+                            <div class="card-body">
+                                <div class="info-item">
+                                    <div class="info-label">Gebruikersnaam</div>
+                                    <div class="info-value">{{ session['username'] }}</div>
+                                </div>
+                                <div class="info-item">
+                                    <div class="info-label">Roltype</div>
+                                    <div class="info-value">Administrator</div>
+                                </div>
+                                <div class="info-item">
+                                    <div class="info-label">Laatste login</div>
+                                    <div class="info-value">{{ time }}</div>
+                                </div>
+                                <div class="info-item">
+                                    <div class="info-label">Status</div>
+                                    <div class="info-value"><span class="badge bg-success">Actief</span></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-lg-6">
+                        <div class="info-card">
+                            <div class="card-header">
+                                <i class="fas fa-shield-alt"></i>
+                                <h3>Beveiligingsstatus</h3>
+                            </div>
+                            <div class="card-body">
+                                <div class="progress-item">
+                                    <div class="progress-label">
+                                        <span>SAST</span>
+                                        <span class="progress-value">100%</span>
+                                    </div>
+                                    <div class="progress">
+                                        <div class="progress-bar bg-success" role="progressbar" style="width: 100%" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100"></div>
+                                    </div>
+                                </div>
+                                <div class="progress-item">
+                                    <div class="progress-label">
+                                        <span>Container Scan</span>
+                                        <span class="progress-value">100%</span>
+                                    </div>
+                                    <div class="progress">
+                                        <div class="progress-bar bg-success" role="progressbar" style="width: 100%" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100"></div>
+                                    </div>
+                                </div>
+                                <div class="progress-item">
+                                    <div class="progress-label">
+                                        <span>DAST</span>
+                                        <span class="progress-value">100%</span>
+                                    </div>
+                                    <div class="progress">
+                                        <div class="progress-bar bg-success" role="progressbar" style="width: 100%" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100"></div>
+                                    </div>
+                                </div>
+                                <div class="progress-item">
+                                    <div class="progress-label">
+                                        <span>GitOps</span>
+                                        <span class="progress-value">100%</span>
+                                    </div>
+                                    <div class="progress">
+                                        <div class="progress-bar bg-success" role="progressbar" style="width: 100%" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="dashboard-container">
+                    <div class="dashboard-header">
+                        <i class="fas fa-chart-line"></i>
+                        <h3>DevSecOps Dashboard</h3>
+                    </div>
+                    <div class="dashboard-stats">
+                        <div class="stat-card">
+                            <div class="stat-value">0</div>
+                            <div class="stat-label">Kritieke kwetsbaarheden</div>
+                            <div class="stat-icon">
+                                <i class="fas fa-skull-crossbones"></i>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">0</div>
+                            <div class="stat-label">Hoge kwetsbaarheden</div>
+                            <div class="stat-icon">
+                                <i class="fas fa-exclamation-triangle"></i>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">42</div>
+                            <div class="stat-label">Security Tests</div>
+                            <div class="stat-icon">
+                                <i class="fas fa-vial"></i>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">100%</div>
+                            <div class="stat-label">Pipeline Succes</div>
+                            <div class="stat-icon">
+                                <i class="fas fa-check-circle"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="action-buttons">
+                    <a href="#" class="btn btn-primary btn-lg">
+                        <i class="fas fa-tachometer-alt me-2"></i>Dashboard
+                    </a>
+                    <a href="#" class="btn btn-info btn-lg">
+                        <i class="fas fa-bell me-2"></i>Meldingen
+                    </a>
+                    <a href="#" class="btn btn-success btn-lg">
+                        <i class="fas fa-chart-bar me-2"></i>Rapporten
+                    </a>
+                    <a href="#" class="btn btn-danger btn-lg">
+                        <i class="fas fa-sign-out-alt me-2"></i>Uitloggen
+                    </a>
+                </div>
+            </div>
         </div>
     {% else %}
-        <p>Je bent niet ingelogd. Ga naar de <a href="/login">loginpagina</a>.</p>
+        <div class="not-logged-in">
+            <div class="lock-icon">
+                <i class="fas fa-lock"></i>
+            </div>
+            <h2>Toegang beperkt</h2>
+            <p>Je bent niet ingelogd. Ga naar de <a href="/login" class="login-link">loginpagina</a> om toegang te krijgen tot je profiel.</p>
+            <a href="/login" class="btn btn-primary mt-4">
+                <i class="fas fa-sign-in-alt me-2"></i>Ga naar Login
+            </a>
+        </div>
     {% endif %}
+
+<style>
+    .profile-container {
+        width: 100%;
+        animation: fadeIn 0.8s ease-out;
+    }
+
+    .profile-header {
+        text-align: center;
+        margin-bottom: 3rem;
+    }
+
+    .profile-avatar {
+        width: 120px;
+        height: 120px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #3498db 0%, #2c3e50 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 1.5rem auto;
+        font-size: 4rem;
+        color: white;
+        box-shadow: 0 10px 25px rgba(52, 152, 219, 0.3);
+        animation: pulse 3s infinite;
+    }
+
+    @keyframes pulse {
+        0% { transform: scale(1); box-shadow: 0 10px 25px rgba(52, 152, 219, 0.3); }
+        50% { transform: scale(1.05); box-shadow: 0 15px 35px rgba(52, 152, 219, 0.5); }
+        100% { transform: scale(1); box-shadow: 0 10px 25px rgba(52, 152, 219, 0.3); }
+    }
+
+    .profile-header h1 {
+        font-size: 2.5rem;
+        font-weight: 700;
+        color: var(--secondary-color);
+        margin-bottom: 0.8rem;
+    }
+
+    .username {
+        color: var(--primary-color);
+    }
+
+    .profile-time {
+        font-size: 1.1rem;
+        color: #6c757d;
+    }
+
+    .profile-content {
+        margin-top: 2rem;
+    }
+
+    .info-card {
+        background-color: white;
+        border-radius: 15px;
+        overflow: hidden;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+        margin-bottom: 2rem;
+        height: 100%;
+        transition: all 0.3s ease;
+        animation: slideIn 0.6s ease-out;
+    }
+
+    .info-card:hover {
+        transform: translateY(-8px);
+        box-shadow: 0 15px 40px rgba(0, 0, 0, 0.15);
+    }
+
+    @keyframes slideIn {
+        from { opacity: 0; transform: translateY(20px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    .card-header {
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        padding: 1.5rem;
+        display: flex;
+        align-items: center;
+        border-bottom: 1px solid #e9ecef;
+    }
+
+    .card-header i {
+        font-size: 1.8rem;
+        color: var(--primary-color);
+        margin-right: 1rem;
+    }
+
+    .card-header h3 {
+        margin: 0;
+        font-size: 1.4rem;
+        font-weight: 600;
+        color: var(--dark-color);
+    }
+
+    .card-body {
+        padding: 1.5rem;
+    }
+
+    .info-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1.2rem;
+        padding-bottom: 1.2rem;
+        border-bottom: 1px solid #e9ecef;
+    }
+
+    .info-item:last-child {
+        margin-bottom: 0;
+        padding-bottom: 0;
+        border-bottom: none;
+    }
+
+    .info-label {
+        font-weight: 500;
+        color: #6c757d;
+        font-size: 1.1rem;
+    }
+
+    .info-value {
+        font-weight: 600;
+        color: var(--dark-color);
+        font-size: 1.1rem;
+    }
+
+    .progress-item {
+        margin-bottom: 1.5rem;
+    }
+
+    .progress-item:last-child {
+        margin-bottom: 0;
+    }
+
+    .progress-label {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 0.8rem;
+        font-weight: 500;
+    }
+
+    .progress-value {
+        font-weight: 600;
+        color: var(--primary-color);
+    }
+
+    .progress {
+        height: 12px;
+        border-radius: 6px;
+        background-color: #e9ecef;
+        overflow: hidden;
+    }
+
+    .progress-bar {
+        transition: width 1.5s ease;
+        animation: progressAnimation 1.5s ease-out;
+    }
+
+    @keyframes progressAnimation {
+        from { width: 0%; }
+    }
+
+    .dashboard-container {
+        background-color: white;
+        border-radius: 15px;
+        overflow: hidden;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+        margin-bottom: 2rem;
+        animation: slideIn 0.8s ease-out;
+    }
+
+    .dashboard-header {
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        padding: 1.5rem;
+        display: flex;
+        align-items: center;
+        border-bottom: 1px solid #e9ecef;
+    }
+
+    .dashboard-header i {
+        font-size: 1.8rem;
+        color: var(--primary-color);
+        margin-right: 1rem;
+    }
+
+    .dashboard-header h3 {
+        margin: 0;
+        font-size: 1.4rem;
+        font-weight: 600;
+        color: var(--dark-color);
+    }
+
+    .dashboard-stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 1.5rem;
+        padding: 1.5rem;
+    }
+
+    .stat-card {
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        border-radius: 12px;
+        padding: 1.5rem;
+        text-align: center;
+        transition: all 0.3s ease;
+        position: relative;
+        overflow: hidden;
+        height: 100%;
+    }
+
+    .stat-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+    }
+
+    .stat-value {
+        font-size: 3rem;
+        font-weight: 700;
+        color: var(--secondary-color);
+        margin-bottom: 0.5rem;
+    }
+
+    .stat-label {
+        font-size: 1.1rem;
+        font-weight: 500;
+        color: #6c757d;
+    }
+
+    .stat-icon {
+        position: absolute;
+        bottom: -15px;
+        right: -15px;
+        font-size: 4rem;
+        color: rgba(52, 152, 219, 0.1);
+        transform: rotate(-15deg);
+    }
+
+    .action-buttons {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 1rem;
+        margin-top: 2rem;
+    }
+
+    .action-buttons .btn {
+        min-width: 180px;
+        border-radius: 30px;
+        font-weight: 600;
+        font-size: 1.1rem;
+        padding: 0.8rem 1.5rem;
+        box-shadow: 0 8px 15px rgba(0, 0, 0, 0.1);
+        transition: all 0.3s ease;
+    }
+
+    .action-buttons .btn:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 12px 20px rgba(0, 0, 0, 0.15);
+    }
+
+    .not-logged-in {
+        background-color: white;
+        border-radius: 15px;
+        padding: 4rem 2rem;
+        text-align: center;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+        max-width: 600px;
+        margin: 0 auto;
+        animation: fadeIn 0.8s ease-out;
+    }
+
+    .lock-icon {
+        width: 100px;
+        height: 100px;
+        background-color: #e74c3c;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 2rem auto;
+        font-size: 3rem;
+        color: white;
+        box-shadow: 0 10px 25px rgba(231, 76, 60, 0.3);
+        animation: shake 5s infinite;
+    }
+
+    @keyframes shake {
+        0%, 100% { transform: translateX(0); }
+        2%, 6%, 10% { transform: translateX(-5px); }
+        4%, 8%, 12% { transform: translateX(5px); }
+        14% { transform: translateX(0); }
+    }
+
+    .not-logged-in h2 {
+        font-size: 2.2rem;
+        font-weight: 700;
+        color: var(--dark-color);
+        margin-bottom: 1rem;
+    }
+
+    .not-logged-in p {
+        font-size: 1.2rem;
+        color: #6c757d;
+        margin-bottom: 1.5rem;
+    }
+
+    .login-link {
+        color: var(--primary-color);
+        font-weight: 600;
+        text-decoration: none;
+        transition: all 0.3s ease;
+    }
+
+    .login-link:hover {
+        text-decoration: underline;
+    }
+
+    @media (max-width: 992px) {
+        .dashboard-stats {
+            grid-template-columns: repeat(2, 1fr);
+        }
+    }
+
+    @media (max-width: 768px) {
+        .profile-avatar {
+            width: 100px;
+            height: 100px;
+            font-size: 3.5rem;
+        }
+
+        .profile-header h1 {
+            font-size: 2rem;
+        }
+
+        .action-buttons {
+            flex-direction: column;
+        }
+
+        .action-buttons .btn {
+            width: 100%;
+        }
+
+        .dashboard-stats {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
 {% endblock %}

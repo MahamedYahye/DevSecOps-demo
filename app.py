@@ -57,7 +57,7 @@ def login():
             session["username"] = username
             return redirect("/profile")
         else:
-            error = "Ongeldige inloggegevens"
+            error = "Ongeldige inloggegevens. Probeer admin/wachtwoord123!"
 
     return render_template("login.html", error=error)
 
@@ -114,9 +114,9 @@ def api_login():
 
 @app.route("/Test")
 def test_route():
-    return "<h1>Test!!!</h1>"
+    return render_template("Test.html")  # Let op: hoofdletter T in Test.html
 
 
 if __name__ == "__main__":
     init_db()
-    app.run(debug=True, host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+    app.run(debug=True, host="0.0.0.0", port=int(os.environ.get("PORT", 5004)))
