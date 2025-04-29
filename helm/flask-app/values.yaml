@@ -2,10 +2,13 @@ replicaCount: 1
 
 image:
   repository: ghcr.io/mahamedyahye/flask-app
-  tag: 0.0.7 
+  tag: 0.0.7
   pullPolicy: IfNotPresent
 
 service:
-  type: ClusterIP
-  port: 80
-  targetPort: 5000
+  type: NodePort
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 5000
+      nodePort: 30080 
