@@ -1,0 +1,59 @@
+name: OWASP ZAP Security Scan
+
+on:
+    workflow_dispatch:  # Handmatig triggeren
+    push:
+      branches: [ main ]  # Of vervang 'main' door je default branch
+ 
+jobs:
+ zap-scan:
+   runs-on: self-hosted  # Gebruik je self-hosted runner
+   
+   steps:
+   - name: Checkout code
+     uses: actions/checkout@v3
+   
+   - name: Test URL connectivity
+     run: |
+       echo "Testing connection to target URL: http://127.0.0.1:52168"
+       if curl -s --head --fail http://127.0.0.1:52168 > /dev/null; then
+         echo "✅ Connection successful"
+       else
+         echo "❌ Connection failed - URL is not accessible"
+         echo "Error code: $?"
+         echo "Detailed connection info:"
+         curl -v http://127.0.0.1:52168 || true
+         echo "Make sure Minikube tunnel is running and the service is available"
+         exit 1
+       fi
+   
+   - name: Run ZAP Scan
+     run: |
+       echo "Scanning target URL: http://127.0.0.1:52168"
+       mkdir -p zap-report
+       docker run --rm \
+         -v "$(pwd)/zap-report:/zap/wrk" \
+         zaproxy/zap-stable:latest \
+         zap-baseline.py -t http://127.0.0.1:52168 -g gen.conf -r zap-report.html || { 
+           echo "ZAP scan failed with error code $?"
+           echo "Checking if report was generated despite error:"
+           ls -la zap-report/ || true
+           exit 1
+         }
+   
+   - name: Check ZAP result
+     run: |
+       if [ -f "zap-report/zap-report.html" ]; then
+         echo "✅ ZAP scan complete. Results saved to zap-report directory."
+         ls -la zap-report/
+       else
+         echo "❌ ZAP report not found. The scan might have failed."
+         exit 1
+       fi
+   
+   - name: Upload ZAP report
+     if: always()  # Upload report even if previous steps failed
+     uses: actions/upload-artifact@v3
+     with:
+       name: zap-report
+       path: zap-report/
