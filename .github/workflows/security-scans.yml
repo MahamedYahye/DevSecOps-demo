@@ -176,6 +176,8 @@
 #               -H "Authorization: Token $DEFECTDOJO_API_KEY" \
 #               -F "scan_date=$SCAN_DATE" \
 #               -F "scan_type=$scan_type" \
+#               -F "close_old_findings=true" \
+#               -F "deduplication_on_engagement=true" \
 #               -F "engagement=$DEFECTDOJO_ENGAGEMENT_ID" \
 #               -F "file=@$file")
 
