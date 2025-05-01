@@ -293,6 +293,17 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        
+      - name: Build Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          load: true
+          tags: flask-app:test
+          push: false
+          
       - name: Generate SBOM with Syft
         run: |
           mkdir -p sbom-results
@@ -300,49 +311,18 @@ jobs:
             -v /var/run/docker.sock:/var/run/docker.sock \
             -v "$(pwd)/sbom-results:/output" \
             anchore/syft:latest \
-            $(pwd) \
+            flask-app:test \
             -o cyclonedx-json=/output/sbom.cyclonedx.json
           
-      - name: Debug - Check SBOM file
-        run: |
-          ls -la sbom-results/
-          head -n 20 sbom-results/sbom.cyclonedx.json
-          
-      - name: Debug - Test API connection
+      - name: Upload SBOM to Dependency-Track
         env:
           API_KEY: ${{ secrets.DEPENDENCYTRACK_API_KEY }}
           API_URL: ${{ secrets.DEPENDENCYTRACK_URL }}
         run: |
-          echo "Testing API connection to $API_URL"
-          curl -s -o api_test.json \
-            -H "X-Api-Key: $API_KEY" \
-            "$API_URL/api/v1/version"
-          cat api_test.json
-          
-      - name: Create Project - Simple Approach
-        env:
-          API_KEY: ${{ secrets.DEPENDENCYTRACK_API_KEY }}
-          API_URL: ${{ secrets.DEPENDENCYTRACK_URL }}
-        run: |
-          echo "Creating project..."
-          curl -v -X PUT "$API_URL/api/v1/project" \
-            -H "Content-Type: application/json" \
-            -H "X-Api-Key: $API_KEY" \
-            -d '{"name":"flask-app","version":"1.0.0"}' > create_project.json
-          
-          cat create_project.json
-          
-      - name: Upload SBOM - Basic Approach
-        env:
-          API_KEY: ${{ secrets.DEPENDENCYTRACK_API_KEY }}
-          API_URL: ${{ secrets.DEPENDENCYTRACK_URL }}
-        run: |
-          echo "Uploading SBOM using basic approach..."
+          echo "Uploading SBOM to Dependency-Track..."
           curl -v -X POST "$API_URL/api/v1/bom" \
             -H "X-Api-Key: $API_KEY" \
             -F "project=flask-app" \
             -F "version=1.0.0" \
             -F "autoCreate=true" \
-            -F "bom=@sbom-results/sbom.cyclonedx.json" > upload_result.json
-            
-          cat upload_result.json
+            -F "bom=@sbom-results/sbom.cyclonedx.json"
