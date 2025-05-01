@@ -292,7 +292,9 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        
+        with:
+          fetch-depth: 0
+          
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
         
@@ -314,25 +316,15 @@ jobs:
             flask-app:test \
             -o cyclonedx-json=/output/sbom.cyclonedx.json
             
-      - name: Verify SBOM file
+      - name: Scan image with Grype
         run: |
-          echo "Controleren of SBOM-bestand correct is aangemaakt..."
-          if [ ! -f "sbom-results/sbom.cyclonedx.json" ]; then
-            echo "❌ SBOM-bestand niet gevonden!"
-            exit 1
-          fi
-          
-          # Check bestandsgrootte
-          FILESIZE=$(stat -f%z "sbom-results/sbom.cyclonedx.json" 2>/dev/null || stat -c%s "sbom-results/sbom.cyclonedx.json")
-          echo "SBOM bestandsgrootte: $FILESIZE bytes"
-          
-          if [ "$FILESIZE" -lt 100 ]; then
-            echo "❌ SBOM-bestand lijkt te klein!"
-            cat "sbom-results/sbom.cyclonedx.json"
-            exit 1
-          fi
-          
-          echo "✅ SBOM-bestand lijkt correct"
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "$(pwd)/sbom-results:/output" \
+            anchore/grype:latest \
+            flask-app:test -o json > sbom-results/vulnerabilities.json
+          echo "=== Vulnerability Summary ==="
+          jq '.matches | group_by(.vulnerability.severity) | map({(.[0].vulnerability.severity): length})' sbom-results/vulnerabilities.json || true
           
       - name: Upload SBOM to Dependency-Track
         env:
@@ -344,17 +336,30 @@ jobs:
           
           echo "Uploading SBOM naar project UUID: $PROJECT_UUID"
           
-          # Eenvoudige curl-opdracht met minimale headers
-          curl -v "$API_URL/api/v1/bom/project/$PROJECT_UUID" \
-            -X PUT \
-            -H "X-Api-Key: $API_KEY" \
-            -H "Content-Type: application/vnd.cyclonedx+json" \
-            --data-binary @sbom-results/sbom.cyclonedx.json
+          # Omzetten van SBOM naar base64
+          SBOM_BASE64=$(base64 < sbom-results/sbom.cyclonedx.json)
           
-          # We vertrouwen op de curl exit code
-          if [ $? -eq 0 ]; then
-            echo "✅ SBOM upload succesvol"
+          # Maak JSON payload
+          JSON_PAYLOAD="{\"project\":{\"uuid\":\"$PROJECT_UUID\"},\"bom\":\"$SBOM_BASE64\"}"
+          
+          # Upload SBOM met correcte payload
+          HTTP_CODE=$(curl -s -o response.txt -w "%{http_code}" \
+            -X PUT "$API_URL/api/v1/bom" \
+            -H "X-Api-Key: $API_KEY" \
+            -H "Content-Type: application/json" \
+            -d "$JSON_PAYLOAD")
+          
+          cat response.txt
+          
+          if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
+            echo "✅ SBOM upload succesvol (HTTP $HTTP_CODE)"
           else
-            echo "❌ SBOM upload mislukt (curl exit code: $?)"
+            echo "❌ SBOM upload mislukt (HTTP $HTTP_CODE)"
             exit 1
           fi
+          
+      - name: Upload results as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-and-vulnerabilities
+          path: sbom-results/
