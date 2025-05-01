@@ -280,7 +280,6 @@
 #           git config --global user.email "actions@github.com"
 #           git tag -a "v${{ steps.semver.outputs.version }}" -m "Release v${{ steps.semver.outputs.version }}"
 #           git push origin "v${{ steps.semver.outputs.version }}"
-
 name: SBOM Generation and Upload to Dependency-Track
 
 on:
