@@ -342,15 +342,29 @@ jobs:
         run: |
           echo "Uploading SBOM to $DEP_TRACK_URL..."
           
-          # Maak een eenvoudiger commando zonder backslashes
+          # Base64 encoderen van de SBOM
+          SBOM_BASE64=$(base64 -w 0 sbom-results/sbom.cyclonedx.json)
+          
+          # JSON payload maken
+          cat > payload.json << EOF
+          {
+            "project": "${PROJECT_NAME}",
+            "version": "${PROJECT_VERSION}",
+            "autoCreate": true,
+            "bom": "${SBOM_BASE64}"
+          }
+          EOF
+          
+          # API-verzoek uitvoeren
           curl -s \
             -o curl_response.txt \
             -w "%{http_code}" \
-            -X POST \
-            "${DEP_TRACK_URL}/api/v1/bom?project=${PROJECT_NAME}&version=${PROJECT_VERSION}" \
+            -X PUT \
+            "${DEP_TRACK_URL}/api/v1/bom" \
             -H "X-Api-Key: ${DEP_TRACK_API_KEY}" \
-            -H "Content-Type: application/vnd.cyclonedx+json" \
-            --data-binary "@sbom-results/sbom.cyclonedx.json" > http_code.txt
+            -H "Content-Type: application/json" \
+            -H "Accept: application/json" \
+            -d @payload.json > http_code.txt
           
           HTTP_CODE=$(cat http_code.txt)
           
@@ -358,6 +372,7 @@ jobs:
             echo "✅ Upload succeeded (HTTP $HTTP_CODE)"
           else
             echo "❌ Upload failed (HTTP $HTTP_CODE)"
+            echo "Response:"
             cat curl_response.txt
             exit 1
           fi
