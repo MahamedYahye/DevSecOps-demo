@@ -292,16 +292,7 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          
-      - name: Determine Version
-        id: version
-        run: |
-          LATEST_TAG=$(git describe --tags --abbrev=0 --match "v*" 2>/dev/null || echo "v0.0.0")
-          LATEST_VERSION=${LATEST_TAG#v}
-          echo "version=$LATEST_VERSION" >> $GITHUB_OUTPUT
-          
+        
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
         
@@ -323,60 +314,21 @@ jobs:
             flask-app:test \
             -o cyclonedx-json=/output/sbom.cyclonedx.json
             
-      - name: Scan image with Grype
-        run: |
-          docker run --rm \
-            -v /var/run/docker.sock:/var/run/docker.sock \
-            -v "$(pwd)/sbom-results:/output" \
-            anchore/grype:latest \
-            flask-app:test -o json > sbom-results/vulnerabilities.json
-          echo "=== Vulnerability Summary ==="
-          jq '.matches | group_by(.vulnerability.severity) | map({(.[0].vulnerability.severity): length})' sbom-results/vulnerabilities.json || true
-          
-      - name: Generate Simple Project JSON
-        env:
-          PROJECT_NAME: "flask-app"
-          PROJECT_VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          echo '{
-            "project": "'$PROJECT_NAME'",
-            "version": "'$PROJECT_VERSION'",
-            "autoCreate": true
-          }' > project.json
-          
       - name: Upload SBOM to Dependency-Track
         env:
-          DEP_TRACK_URL: ${{ secrets.DEPENDENCYTRACK_URL }}
-          DEP_TRACK_API_KEY: ${{ secrets.DEPENDENCYTRACK_API_KEY }}
+          API_KEY: ${{ secrets.DEPENDENCYTRACK_API_KEY }}
+          API_URL: ${{ secrets.DEPENDENCYTRACK_URL }}
         run: |
-          echo "Uploading SBOM to $DEP_TRACK_URL..."
+          cat > payload.json << 'EOF'
+          {
+            "project": "flask-app",
+            "version": "1.0.0",
+            "autoCreate": true
+          }
+          EOF
           
-          # Controleer of het bestand bestaat
-          if [ ! -f "sbom-results/sbom.cyclonedx.json" ]; then
-            echo "❌ SBOM file not found!"
-            exit 1
-          fi
-          
-          # Gebruik de API-versie die direct een bestand accepteert
-          RESPONSE=$(curl -s \
-            -X POST "${DEP_TRACK_URL}/api/v1/bom" \
-            -H "X-Api-Key: ${DEP_TRACK_API_KEY}" \
+          curl -X "POST" "$API_URL/api/v1/bom" \
             -H "Content-Type: multipart/form-data" \
-            -F "project=@project.json;type=application/json" \
-            -F "bom=@sbom-results/sbom.cyclonedx.json;type=application/vnd.cyclonedx+json")
-          
-          echo "Response: $RESPONSE"
-          
-          # Controleer of de response een error bevat
-          if echo "$RESPONSE" | grep -q "error"; then
-            echo "❌ Upload failed"
-            exit 1
-          else
-            echo "✅ Upload succeeded"
-          fi
-          
-      - name: Upload results as artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: sbom-and-vulnerabilities
-          path: sbom-results/
+            -H "X-Api-Key: $API_KEY" \
+            -F "project=@payload.json" \
+            -F "bom=@sbom-results/sbom.cyclonedx.json"
