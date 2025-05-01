@@ -314,15 +314,51 @@ jobs:
             flask-app:test \
             -o cyclonedx-json=/output/sbom.cyclonedx.json
           
-      - name: Upload SBOM to Dependency-Track
+      - name: Create or Get Project ID
+        id: get_project
         env:
           API_KEY: ${{ secrets.DEPENDENCYTRACK_API_KEY }}
           API_URL: ${{ secrets.DEPENDENCYTRACK_URL }}
         run: |
-          echo "Uploading SBOM to Dependency-Track..."
-          curl -v -X POST "$API_URL/api/v1/bom" \
+          echo "Creating or getting project ID..."
+          
+          # Eerst proberen we het project aan te maken
+          PROJECT_RESPONSE=$(curl -s -X PUT "$API_URL/api/v1/project" \
+            -H "Content-Type: application/json" \
             -H "X-Api-Key: $API_KEY" \
-            -F "project=flask-app" \
-            -F "version=1.0.0" \
-            -F "autoCreate=true" \
-            -F "bom=@sbom-results/sbom.cyclonedx.json"
+            -d '{"name":"flask-app","version":"1.0.0","active":true}')
+          
+          # Haal de UUID uit de response
+          PROJECT_UUID=$(echo "$PROJECT_RESPONSE" | grep -o '"uuid":"[^"]*' | sed 's/"uuid":"//g')
+          
+          # Als we geen UUID konden vinden, probeer dan het project op te halen
+          if [ -z "$PROJECT_UUID" ]; then
+            echo "Kon geen UUID vinden in aanmaakrespons, probeer project op te halen..."
+            PROJECT_LOOKUP=$(curl -s "$API_URL/api/v1/project/lookup?name=flask-app&version=1.0.0" \
+              -H "X-Api-Key: $API_KEY")
+            PROJECT_UUID=$(echo "$PROJECT_LOOKUP" | grep -o '"uuid":"[^"]*' | sed 's/"uuid":"//g')
+          fi
+          
+          # Controleer of we nu een UUID hebben
+          if [ -n "$PROJECT_UUID" ]; then
+            echo "Project UUID gevonden: $PROJECT_UUID"
+            echo "project_uuid=$PROJECT_UUID" >> $GITHUB_OUTPUT
+          else
+            echo "Kon geen project UUID vinden"
+            echo "Project response: $PROJECT_RESPONSE"
+            echo "Project lookup: $PROJECT_LOOKUP"
+            exit 1
+          fi
+      
+      - name: Upload SBOM to Project
+        if: steps.get_project.outputs.project_uuid
+        env:
+          API_KEY: ${{ secrets.DEPENDENCYTRACK_API_KEY }}
+          API_URL: ${{ secrets.DEPENDENCYTRACK_URL }}
+          PROJECT_UUID: ${{ steps.get_project.outputs.project_uuid }}
+        run: |
+          echo "Uploading SBOM to project UUID: $PROJECT_UUID"
+          curl -v -X PUT "$API_URL/api/v1/bom/project/$PROJECT_UUID" \
+            -H "Content-Type: application/vnd.cyclonedx+json" \
+            -H "X-Api-Key: $API_KEY" \
+            --data-binary @sbom-results/sbom.cyclonedx.json
