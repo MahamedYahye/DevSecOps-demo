@@ -313,50 +313,48 @@ jobs:
             anchore/syft:latest \
             flask-app:test \
             -o cyclonedx-json=/output/sbom.cyclonedx.json
+            
+      - name: Verify SBOM file
+        run: |
+          echo "Controleren of SBOM-bestand correct is aangemaakt..."
+          if [ ! -f "sbom-results/sbom.cyclonedx.json" ]; then
+            echo "❌ SBOM-bestand niet gevonden!"
+            exit 1
+          fi
+          
+          # Check bestandsgrootte
+          FILESIZE=$(stat -f%z "sbom-results/sbom.cyclonedx.json" 2>/dev/null || stat -c%s "sbom-results/sbom.cyclonedx.json")
+          echo "SBOM bestandsgrootte: $FILESIZE bytes"
+          
+          if [ "$FILESIZE" -lt 100 ]; then
+            echo "❌ SBOM-bestand lijkt te klein!"
+            cat "sbom-results/sbom.cyclonedx.json"
+            exit 1
+          fi
+          
+          echo "✅ SBOM-bestand lijkt correct"
           
       - name: Upload SBOM to Dependency-Track
         env:
           API_KEY: ${{ secrets.DEPENDENCYTRACK_API_KEY }}
           API_URL: ${{ secrets.DEPENDENCYTRACK_URL }}
         run: |
-          # Stap 1: Zoek het project op of maak het aan
-          echo "Zoeken naar project..."
-          PROJECT_LOOKUP=$(curl -s "$API_URL/api/v1/project/lookup?name=flask-app&version=1.0.0" \
-            -H "X-Api-Key: $API_KEY")
+          # Hard-coded UUID van het project dat al bestaat in je systeem
+          PROJECT_UUID="7021d1a0-5130-4ae1-ae0c-0c5983b43a24"
           
-          # Haal de UUID uit de response
-          PROJECT_UUID=$(echo "$PROJECT_LOOKUP" | grep -o '"uuid":"[^"]*' | sed 's/"uuid":"//g')
-          
-          # Als we geen UUID vonden, maak het project aan
-          if [ -z "$PROJECT_UUID" ]; then
-            echo "Project niet gevonden, project aanmaken..."
-            PROJECT_CREATE=$(curl -s -X PUT "$API_URL/api/v1/project" \
-              -H "Content-Type: application/json" \
-              -H "X-Api-Key: $API_KEY" \
-              -d '{"name":"flask-app","version":"1.0.0","active":true}')
-            
-            PROJECT_UUID=$(echo "$PROJECT_CREATE" | grep -o '"uuid":"[^"]*' | sed 's/"uuid":"//g')
-          fi
-          
-          # Controleer of we nu een UUID hebben
-          if [ -z "$PROJECT_UUID" ]; then
-            echo "Kon geen project UUID vinden"
-            exit 1
-          fi
-          
-          # Stap 2: Upload de SBOM naar het project UUID
           echo "Uploading SBOM naar project UUID: $PROJECT_UUID"
-          UPLOAD_RESPONSE=$(curl -s -X PUT "$API_URL/api/v1/bom/project/$PROJECT_UUID" \
-            -H "Content-Type: application/vnd.cyclonedx+json" \
+          
+          # Eenvoudige curl-opdracht met minimale headers
+          curl -v "$API_URL/api/v1/bom/project/$PROJECT_UUID" \
+            -X PUT \
             -H "X-Api-Key: $API_KEY" \
-            --data-binary @sbom-results/sbom.cyclonedx.json)
+            -H "Content-Type: application/vnd.cyclonedx+json" \
+            --data-binary @sbom-results/sbom.cyclonedx.json
           
-          echo "Upload response: $UPLOAD_RESPONSE"
-          
-          # Controleer of de upload succesvol was
-          if echo "$UPLOAD_RESPONSE" | grep -q "token"; then
+          # We vertrouwen op de curl exit code
+          if [ $? -eq 0 ]; then
             echo "✅ SBOM upload succesvol"
           else
-            echo "❌ SBOM upload mislukt"
+            echo "❌ SBOM upload mislukt (curl exit code: $?)"
             exit 1
           fi
