@@ -283,146 +283,79 @@
 name: SBOM Generation and Upload to Dependency-Track
 
 on:
-  workflow_dispatch:  # Handmatig triggeren
+  workflow_dispatch:
   push:
-    branches: [ main ]
-  
+    branches:
+      - main
+
 jobs:
   generate-sbom:
     runs-on: self-hosted
-    
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
-    
-    - name: Determine Version
-      id: version
-      run: |
-        LATEST_TAG=$(git describe --tags --abbrev=0 --match "v*" 2>/dev/null || echo "v0.0.0")
-        LATEST_VERSION=${LATEST_TAG#v}
-        echo "version=$LATEST_VERSION" >> $GITHUB_OUTPUT
-        echo "Using version: $LATEST_VERSION"
-    
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
-    
-    - name: Build Docker image
-      uses: docker/build-push-action@v5
-      with:
-        context: .
-        load: true
-        tags: flask-app:test
-        push: false
-    
-    - name: Generate SBOM with Syft
-      run: |
-        mkdir -p sbom-results
-        
-        docker run --rm \
-          -v /var/run/docker.sock:/var/run/docker.sock \
-          -v $(pwd)/sbom-results:/output \
-          anchore/syft:latest \
-          flask-app:test -o cyclonedx-json=/output/sbom.cyclonedx.json -o spdx-json=/output/sbom.spdx.json
-        
-        echo "✅ SBOM generated successfully"
-        
-        docker run --rm \
-          -v /var/run/docker.sock:/var/run/docker.sock \
-          anchore/syft:latest \
-          flask-app:test -o table | head -n 15
-    
-    - name: Scan image with Grype
-      run: |
-        docker run --rm \
-          -v /var/run/docker.sock:/var/run/docker.sock \
-          -v $(pwd)/sbom-results:/output \
-          anchore/grype:latest \
-          flask-app:test -o json > sbom-results/vulnerabilities.json
-        
-        echo "=== Vulnerability Summary ==="
-        CRITICAL_COUNT=$(jq '.matches | map(select(.vulnerability.severity == "Critical")) | length' sbom-results/vulnerabilities.json)
-        HIGH_COUNT=$(jq '.matches | map(select(.vulnerability.severity == "High")) | length' sbom-results/vulnerabilities.json)
-        
-        echo "Critical vulnerabilities: $CRITICAL_COUNT"
-        echo "High vulnerabilities: $HIGH_COUNT"
-        
-        echo "=== Top Critical/High Vulnerabilities ==="
-        jq -r '.matches | map(select(.vulnerability.severity == "Critical" or .vulnerability.severity == "High")) | .[0:5] | .[] | "\(.vulnerability.severity): \(.vulnerability.id) in \(.artifact.name) v\(.artifact.version)"' sbom-results/vulnerabilities.json || echo "No critical/high vulnerabilities found"
-    
-    - name: Upload SBOM to Dependency-Track
-      env:
-        DEPENDENCYTRACK_URL: ${{ secrets.DEPENDENCYTRACK_URL }}
-        DEPENDENCYTRACK_API_KEY: ${{ secrets.DEPENDENCYTRACK_API_KEY }}
-      run: |
-        echo "⌛ Uploading SBOM to Dependency-Track..."
-        
-        PROJECT_NAME="Flask App"
-        PROJECT_VERSION="${{ steps.version.outputs.version }}"
-        
-        # Stap 1: Controleer of project bestaat, anders aanmaken
-        echo "Checking if project exists..."
-        PROJECT_EXISTS=$(curl -s -o /dev/null -w "%{http_code}" \
-          "$DEPENDENCYTRACK_URL/api/v1/project/lookup?name=$PROJECT_NAME" \
-          -H "X-API-Key: $DEPENDENCYTRACK_API_KEY")
-        
-        if [ "$PROJECT_EXISTS" != "200" ]; then
-          echo "Creating new project: $PROJECT_NAME..."
-          PROJECT_RESPONSE=$(curl -s -X PUT "$DEPENDENCYTRACK_URL/api/v1/project" \
-            -H "X-API-Key: $DEPENDENCYTRACK_API_KEY" \
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine Version
+        id: version
+        run: |
+          LATEST_TAG=$(git describe --tags --abbrev=0 --match "v*" 2>/dev/null || echo "v0.0.0")
+          LATEST_VERSION=${LATEST_TAG#v}
+          echo "version=$LATEST_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          load: true
+          tags: flask-app:test
+          push: false
+
+      - name: Generate SBOM with Syft
+        run: |
+          mkdir -p sbom-results
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "$(pwd)/sbom-results:/output" \
+            anchore/syft:latest \
+            flask-app:test \
+            -o cyclonedx-json=/output/sbom.cyclonedx.json
+
+      - name: Scan image with Grype
+        run: |
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "$(pwd)/sbom-results:/output" \
+            anchore/grype:latest \
+            flask-app:test -o json > sbom-results/vulnerabilities.json
+          echo "=== Vulnerability Summary ==="
+          jq '.matches | group_by(.vulnerability.severity) | map({(.[0].vulnerability.severity): length})' sbom-results/vulnerabilities.json || true
+
+      - name: Upload scan-results to Dependency-Track
+        env:
+          DEP_TRACK_URL:    ${{ secrets.DEPENDENCYTRACK_URL }}
+          DEP_TRACK_API_KEY: ${{ secrets.DEPENDENCYTRACK_API_KEY }}
+        run: |
+          echo "Uploading vulnerabilities.json to $DEP_TRACK_URL…"
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+            -X POST "$DEP_TRACK_URL/api/v1/upload" \
+            -H "X-Api-Key: $DEP_TRACK_API_KEY" \
             -H "Content-Type: application/json" \
-            -d @- << EOF
-          {
-            "name": "$PROJECT_NAME",
-            "version": "$PROJECT_VERSION",
-            "active": true,
-            "classifier": "APPLICATION",
-            "tags": [
-              {
-                "name": "flask"
-              },
-              {
-                "name": "container"
-              }
-            ]
-          }
-          EOF
-          )
-          PROJECT_UUID=$(echo $PROJECT_RESPONSE | jq -r .uuid)
-          echo "Created project with UUID: $PROJECT_UUID"
-        else
-          echo "Project already exists, getting UUID..."
-          PROJECT_UUID=$(curl -s "$DEPENDENCYTRACK_URL/api/v1/project/lookup?name=$PROJECT_NAME" \
-            -H "X-API-Key: $DEPENDENCYTRACK_API_KEY" | jq -r .uuid)
-          echo "Found project with UUID: $PROJECT_UUID"
-        fi
-        
-        if [ -z "$PROJECT_UUID" ] || [ "$PROJECT_UUID" == "null" ]; then
-          echo "❌ Failed to get project UUID"
-          exit 1
-        fi
-        
-        # Stap 2: Upload SBOM naar het project
-        echo "Uploading SBOM to project $PROJECT_NAME (UUID: $PROJECT_UUID)..."
-        HTTP_CODE=$(curl -s -o dt-response.txt -w "%{http_code}" \
-          -X PUT "$DEPENDENCYTRACK_URL/api/v1/bom" \
-          -H "X-API-Key: $DEPENDENCYTRACK_API_KEY" \
-          -H "Content-Type: multipart/form-data" \
-          -F "project=$PROJECT_UUID" \
-          -F "bom=@sbom-results/sbom.cyclonedx.json")
-        
-        if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
-          echo "✅ Successfully uploaded SBOM to Dependency-Track"
-          echo "🔍 Check your Dependency-Track dashboard to view the results"
-        else
-          echo "❌ Failed to upload SBOM to Dependency-Track with HTTP code $HTTP_CODE"
-          cat dt-response.txt
-          exit 1
-        fi
-    
-    - name: Upload results as artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: sbom-and-vulnerabilities
-        path: sbom-results/
+            --data-binary @sbom-results/vulnerabilities.json)
+          if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
+            echo "✅ Upload succeeded (HTTP $HTTP_CODE)"
+          else
+            echo "❌ Upload failed (HTTP $HTTP_CODE)"
+            exit 1
+          fi
+
+      - name: Upload results as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-and-vulnerabilities
+          path: sbom-results/
