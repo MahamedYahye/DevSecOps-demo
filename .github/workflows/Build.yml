@@ -333,28 +333,25 @@ jobs:
           echo "=== Vulnerability Summary ==="
           jq '.matches | group_by(.vulnerability.severity) | map({(.[0].vulnerability.severity): length})' sbom-results/vulnerabilities.json || true
           
-      - name: Upload SBOM to Dependency-Track
-        env:
-          DEP_TRACK_URL: ${{ secrets.DEPENDENCYTRACK_URL }}
-          DEP_TRACK_API_KEY: ${{ secrets.DEPENDENCYTRACK_API_KEY }}
-          PROJECT_NAME: "flask-app"
-          PROJECT_VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          echo "Uploading SBOM to $DEP_TRACK_URL..."
-          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
-            -X POST "$DEP_TRACK_URL/api/v1/bom" \
-            -H "X-Api-Key: $DEP_TRACK_API_KEY" \
-            -H "Content-Type: application/vnd.cyclonedx+json" \
-            -H "Accept: application/json" \
-            -F "project=$PROJECT_NAME" \
-            -F "version=$PROJECT_VERSION" \
-            -F "bom=@sbom-results/sbom.cyclonedx.json")
-          if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
-            echo "✅ Upload succeeded (HTTP $HTTP_CODE)"
-          else
-            echo "❌ Upload failed (HTTP $HTTP_CODE)"
-            exit 1
-          fi
+          - name: Upload SBOM to Dependency-Track
+          env:
+            DEP_TRACK_URL: ${{ secrets.DEPENDENCYTRACK_URL }}
+            DEP_TRACK_API_KEY: ${{ secrets.DEPENDENCYTRACK_API_KEY }}
+            PROJECT_NAME: "flask-app"
+            PROJECT_VERSION: ${{ steps.version.outputs.version }}
+          run: |
+            echo "Uploading SBOM to $DEP_TRACK_URL..."
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+              -X POST "$DEP_TRACK_URL/api/v1/bom?project=$PROJECT_NAME&version=$PROJECT_VERSION" \
+              -H "X-Api-Key: $DEP_TRACK_API_KEY" \
+              -H "Content-Type: application/vnd.cyclonedx+json" \
+              --data-binary @sbom-results/sbom.cyclonedx.json)
+            if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
+              echo "✅ Upload succeeded (HTTP $HTTP_CODE)"
+            else
+              echo "❌ Upload failed (HTTP $HTTP_CODE)"
+              exit 1
+            fi
           
       - name: Upload results as artifact
         uses: actions/upload-artifact@v4
