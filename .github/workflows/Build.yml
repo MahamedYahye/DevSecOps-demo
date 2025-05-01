@@ -336,18 +336,22 @@ jobs:
           
           echo "Uploading SBOM naar project UUID: $PROJECT_UUID"
           
-          # Omzetten van SBOM naar base64
-          SBOM_BASE64=$(base64 < sbom-results/sbom.cyclonedx.json)
+          # Maak JSON payload - gebruik een bestand in plaats van command-line argument
+          cat > upload_payload.json << EOF
+          {
+            "project": {
+              "uuid": "$PROJECT_UUID"
+            },
+            "bom": "$(base64 < sbom-results/sbom.cyclonedx.json)"
+          }
+          EOF
           
-          # Maak JSON payload
-          JSON_PAYLOAD="{\"project\":{\"uuid\":\"$PROJECT_UUID\"},\"bom\":\"$SBOM_BASE64\"}"
-          
-          # Upload SBOM met correcte payload
+          # Upload SBOM met payload uit bestand
           HTTP_CODE=$(curl -s -o response.txt -w "%{http_code}" \
             -X PUT "$API_URL/api/v1/bom" \
             -H "X-Api-Key: $API_KEY" \
             -H "Content-Type: application/json" \
-            -d "$JSON_PAYLOAD")
+            -d @upload_payload.json)
           
           cat response.txt
           
