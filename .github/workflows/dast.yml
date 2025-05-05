@@ -52,101 +52,85 @@
 name: OWASP ZAP Security Scan
 
 on:
-  push:
+  workflow_run:
+    workflows: ["Build, Scan and Upload"]
+    types:
+      - completed
     branches: [main]
-  schedule:
-    - cron: '0 2 * * 1'  # Elke maandag om 2:00 UTC
 
 jobs:
-  wait_for_build_workflow:
-    name: Wait for Build Workflow
+  check_build_status:
+    name: Check Build Workflow Status
     runs-on: self-hosted
-    if: ${{ github.event_name == 'push' }}
     steps:
-      - name: Check if Build workflow exists
-        id: check_workflow
+      - name: Check build workflow status
         run: |
-          # Maximum aantal seconden om te wachten
-          MAX_WAIT_TIME=900  # 15 minuten
-          START_TIME=$(date +%s)
-          CURRENT_TIME=$(date +%s)
-          ELAPSED_TIME=0
-          BUILD_COMPLETE=false
-          COMMIT_SHA="${{ github.sha }}"
+          if [ "${{ github.event.workflow_run.conclusion }}" != "success" ]; then
+            echo "⛔ Previous build workflow did not succeed - aborting DAST scan"
+            exit 1
+          else
+            echo "✅ Previous build workflow succeeded - proceeding with DAST scan"
+          fi
+
+  wait_for_deployment:
+    name: Wait for Application Deployment
+    needs: [check_build_status]
+    runs-on: self-hosted
+    steps:
+      - name: Initial wait for Argo CD
+        run: |
+          echo "Waiting for Argo CD to process the new deployment..."
+          sleep 60  # Initial wait to give Argo CD time to start the deployment
+
+      - name: Verify application availability
+        run: |
+          MAX_RETRIES=5
+          RETRY_COUNT=0
+          SUCCESS_COUNT=0
+          REQUIRED_SUCCESSES=3
           
-          echo "Checking for Build, Scan and Upload workflow for commit $COMMIT_SHA"
+          echo "Verifying application availability at http://localhost:8081"
           
-          while [ $ELAPSED_TIME -lt $MAX_WAIT_TIME ] && [ "$BUILD_COMPLETE" != "true" ]; do
-            # GitHub API aanroepen om workflow runs te controleren
-            RESPONSE=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-                          "https://api.github.com/repos/${{ github.repository }}/actions/workflows/Build.yml/runs?event=push&status=completed&head_sha=$COMMIT_SHA")
+          while [ $RETRY_COUNT -lt $MAX_RETRIES ] && [ $SUCCESS_COUNT -lt $REQUIRED_SUCCESSES ]; do
+            RETRY_COUNT=$((RETRY_COUNT+1))
             
-            # Controleer of er tenminste één voltooide workflow run is
-            COMPLETED_RUNS=$(echo "$RESPONSE" | jq '.total_count')
-            
-            if [ "$COMPLETED_RUNS" -gt 0 ]; then
-              BUILD_COMPLETE=true
-              CONCLUSION=$(echo "$RESPONSE" | jq -r '.workflow_runs[0].conclusion')
-              echo "✅ Build workflow voor commit $COMMIT_SHA is voltooid met status: $CONCLUSION"
+            if curl -s --head --fail http://localhost:8081 > /dev/null; then
+              SUCCESS_COUNT=$((SUCCESS_COUNT+1))
+              echo "✅ Health check succeeded ($SUCCESS_COUNT/$REQUIRED_SUCCESSES)"
             else
-              # Bereken verstreken tijd
-              CURRENT_TIME=$(date +%s)
-              ELAPSED_TIME=$((CURRENT_TIME - START_TIME))
-              REMAINING_TIME=$((MAX_WAIT_TIME - ELAPSED_TIME))
-              
-              if [ $REMAINING_TIME -gt 0 ]; then
-                echo "⏳ Nog geen voltooide build workflow gevonden. Wachten (${ELAPSED_TIME}s verstreken, ${REMAINING_TIME}s resterend)..."
-                sleep 30
-              fi
+              SUCCESS_COUNT=0
+              echo "❌ Health check failed, resetting success count"
+            fi
+            
+            if [ $SUCCESS_COUNT -lt $REQUIRED_SUCCESSES ]; then
+              echo "Waiting 30 seconds before next check..."
+              sleep 30
             fi
           done
           
-          if [ "$BUILD_COMPLETE" != "true" ]; then
-            echo "⚠️ Timeout bereikt. Geen voltooide build workflow gevonden binnen ${MAX_WAIT_TIME} seconden."
-            echo "Doorgaan met DAST scan op de laatst beschikbare versie."
+          if [ $SUCCESS_COUNT -ge $REQUIRED_SUCCESSES ]; then
+            echo "✅ Application deployment verified! Ready for security scan."
+          else
+            echo "❌ Could not verify application deployment after maximum attempts"
+            exit 1
           fi
 
   zap-scan:
+    name: ZAP Security Scan
+    needs: [wait_for_deployment]
     runs-on: self-hosted
-    needs: [wait_for_build_workflow]
-    if: ${{ always() }}  # Altijd uitvoeren, zelfs als de vorige job faalt
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
    
-    - name: Test URL connectivity
-      run: |
-        echo "Testing connection to target URL: http://localhost:8081"
-        # Meerdere pogingen om connectie te maken, met pauzes ertussen
-        MAX_RETRIES=5
-        RETRY_COUNT=0
-        SUCCESS=false
-
-        while [ $RETRY_COUNT -lt $MAX_RETRIES ] && [ "$SUCCESS" != "true" ]; do
-          if curl -s --head --fail http://localhost:8081 > /dev/null; then
-            echo "✅ Connection successful"
-            SUCCESS=true
-          else
-            RETRY_COUNT=$((RETRY_COUNT+1))
-            if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
-              echo "⏳ Connection attempt $RETRY_COUNT failed - retrying in 30 seconds"
-              sleep 30
-            else
-              echo "❌ All connection attempts failed - URL is not accessible"
-              echo "Make sure port-forwarding is running with: kubectl port-forward service/flask-app 8081:80"
-              exit 1
-            fi
-          fi
-        done
-   
     - name: Run ZAP Scan
       run: |
-        echo "Scanning target URL: http://host.docker.internal:8081"
+        echo "Scanning target URL: http://host.docker.internal:3000"
         mkdir -p zap-report
         docker run --rm \
           -v "$(pwd)/zap-report:/zap/wrk" \
           zaproxy/zap-stable:latest \
-          zap-baseline.py -t http://host.docker.internal:8081 -g gen.conf -r zap-report.html
+          zap-baseline.py -t http://host.docker.internal:3000 -g gen.conf -r zap-report.html
    
     - name: Check ZAP result
       run: |
