@@ -89,12 +89,12 @@ jobs:
           SUCCESS_COUNT=0
           REQUIRED_SUCCESSES=3
           
-          echo "Verifying application availability at http://localhost:8081"
+          echo "Verifying application availability at http://localhost:8282"
           
           while [ $RETRY_COUNT -lt $MAX_RETRIES ] && [ $SUCCESS_COUNT -lt $REQUIRED_SUCCESSES ]; do
             RETRY_COUNT=$((RETRY_COUNT+1))
             
-            if curl -s --head --fail http://localhost:8081 > /dev/null; then
+            if curl -s --head --fail http://localhost:8282 > /dev/null; then
               SUCCESS_COUNT=$((SUCCESS_COUNT+1))
               echo "✅ Health check succeeded ($SUCCESS_COUNT/$REQUIRED_SUCCESSES)"
             else
@@ -125,12 +125,12 @@ jobs:
    
     - name: Run ZAP Scan
       run: |
-        echo "Scanning target URL: http://host.docker.internal:3000"
+        echo "Scanning target URL: http://host.docker.internal:8282"
         mkdir -p zap-report
         docker run --rm \
           -v "$(pwd)/zap-report:/zap/wrk" \
           zaproxy/zap-stable:latest \
-          zap-baseline.py -t http://host.docker.internal:3000 -g gen.conf -r zap-report.html
+          zap-baseline.py -t http://host.docker.internal:8282 -g gen.conf -r zap-report.html
    
     - name: Check ZAP result
       run: |
