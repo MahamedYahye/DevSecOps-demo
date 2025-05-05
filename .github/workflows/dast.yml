@@ -126,8 +126,6 @@ jobs:
     - name: Prepare report directory
       run: |
         mkdir -p zap-report
-        touch zap-report/zap-report.html
-        chmod a+w zap-report/zap-report.html
    
     - name: Run ZAP Scan
       id: zap
@@ -137,7 +135,7 @@ jobs:
         docker run --rm \
           -v "$(pwd)/zap-report:/zap/wrk" \
           zaproxy/zap-stable:latest \
-          zap-baseline.py -t http://host.docker.internal:8282 -r /zap/wrk/zap-report.html
+          zap-baseline.py -t http://host.docker.internal:8282 -r zap-report.html -x zap-report.xml
         
         # Status code opslaan
         echo "zap_status=$?" >> $GITHUB_OUTPUT
@@ -189,10 +187,10 @@ jobs:
       - name: Validate Results
         run: |
           echo "=== Validating ZAP Scan Output ==="
-          if [ -f zap-results/zap-report.html ]; then
-            echo "ZAP Report: ✅ OK"
+          if [ -f zap-results/zap-report.xml ]; then
+            echo "ZAP XML Report: ✅ OK"
           else
-            echo "ZAP Report: ❌ Missing"
+            echo "ZAP XML Report: ❌ Missing"
             exit 1
           fi
 
@@ -212,7 +210,7 @@ jobs:
             -F "close_old_findings=true" \
             -F "deduplication_on_engagement=true" \
             -F "engagement=$DEFECTDOJO_ENGAGEMENT_ID" \
-            -F "file=@zap-results/zap-report.html")
+            -F "file=@zap-results/zap-report.xml")
 
           if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
             echo "✅ Successfully uploaded ZAP scan results to DefectDojo"
