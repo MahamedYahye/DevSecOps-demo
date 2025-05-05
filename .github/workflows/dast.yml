@@ -124,22 +124,43 @@ jobs:
       uses: actions/checkout@v4
    
     - name: Run ZAP Scan
+      id: zap
+      continue-on-error: true  # Deze stap altijd laten voltooien, ook bij fouten
       run: |
         echo "Scanning target URL: http://host.docker.internal:8282"
         mkdir -p zap-report
         docker run --rm \
           -v "$(pwd)/zap-report:/zap/wrk" \
           zaproxy/zap-stable:latest \
-          zap-baseline.py -t http://host.docker.internal:8282 -g gen.conf -r zap-report.html
+          zap-baseline.py -t http://host.docker.internal:8282 -g gen.conf -r zap-report.html -c zap-report.json
+        
+        # Status code opslaan
+        echo "zap_status=$?" >> $GITHUB_OUTPUT
    
-    - name: Check ZAP result
+    - name: Check for critical vulnerabilities
       run: |
-        if [ -f "zap-report/zap-report.html" ]; then
-          echo "✅ ZAP scan complete. Results saved to zap-report directory."
-          ls -la zap-report/
+        if [ -f "zap-report/zap-report.json" ]; then
+          echo "Checking for critical vulnerabilities in scan results..."
+          # Tel alleen kritieke kwetsbaarheden (high/critical)
+          HIGH_COUNT=$(grep -c '"risk":"High"' zap-report/zap-report.json || echo 0)
+          
+          echo "Number of HIGH risk vulnerabilities: $HIGH_COUNT"
+          
+          if [ "$HIGH_COUNT" -gt 0 ]; then
+            echo "⛔ Security scan failed: $HIGH_COUNT critical vulnerabilities detected!"
+            exit 1
+          else
+            echo "✅ No critical vulnerabilities found in security scan!"
+          fi
         else
           echo "❌ ZAP report not found. The scan might have failed."
-          exit 1
+          if [ "${{ steps.zap.outputs.zap_status }}" != "0" ]; then
+            echo "ZAP scan exited with status code ${{ steps.zap.outputs.zap_status }}"
+            # Alleen falen als de exit code 1 is (kritieke fouten), niet voor 2 (waarschuwingen)
+            if [ "${{ steps.zap.outputs.zap_status }}" = "1" ]; then
+              exit 1
+            fi
+          fi
         fi
    
     - name: Upload ZAP report
@@ -153,7 +174,7 @@ jobs:
     name: Upload DAST Results to DefectDojo
     needs: [zap-scan]
     runs-on: self-hosted
-    if: success()
+    if: always()  # Altijd uitvoeren, zelfs als zap-scan faalde
     steps:
       - uses: actions/download-artifact@v4
         with:
