@@ -15,15 +15,39 @@ jobs:
     - name: Checkout code with full history
       uses: actions/checkout@v4
       with:
-        fetch-depth: 0  # Haalt volledige geschiedenis op
-
-    - name: Run GitLeaks
-      uses: gitleaks/gitleaks-action@v2
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        GITLEAKS_DEPTH: "all"  # Instellen op 'all' om alle commits te scannen
-        GITLEAKS_VERBOSE: true  # Meer output voor debugging
-      continue-on-error: true  # Voorkomt dat de workflow faalt bij gevonden geheimen
+        fetch-depth: 0
+        
+    - name: Install latest GitLeaks version
+      run: |
+        wget https://github.com/zricethezav/gitleaks/releases/download/v8.18.1/gitleaks_8.18.1_linux_x64.tar.gz
+        tar -xzf gitleaks_8.18.1_linux_x64.tar.gz
+        chmod +x gitleaks
+        sudo mv gitleaks /usr/local/bin/
+        
+    - name: Run GitLeaks scan
+      continue-on-error: true  # Voor ontwikkelingsfase, verwijder voor productie
+      run: |
+        # Scan en sla resultaten op
+        gitleaks detect --source=. --verbose --redact --report-format=json --report-path=gitleaks-results.json
+        
+        # Toon bevindingen
+        echo "=== GitLeaks Resultaten ==="
+        if [ -f gitleaks-results.json ]; then
+          FOUND=$(jq 'length' gitleaks-results.json)
+          if [ "$FOUND" -gt 0 ]; then
+            echo "⚠️ GitLeaks heeft $FOUND potentiële geheimen gevonden"
+            jq -r '.[] | "- \(.Rule): \(.Description) in \(.File)"' gitleaks-results.json
+          else
+            echo "✅ Geen geheimen gevonden"
+          fi
+        fi
+        
+    - name: Upload GitLeaks Results
+      uses: actions/upload-artifact@v4
+      with:
+        name: gitleaks-results
+        path: gitleaks-results.json
+        if-no-files-found: warn
 
   semgrep:
     name: Semgrep Scan
