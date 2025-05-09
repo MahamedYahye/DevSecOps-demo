@@ -38,7 +38,7 @@ jobs:
         continue-on-error: true
 
   bandit:
-    name: Bandit Scan
+    name: Bandit Security Scan
     runs-on: ubuntu-latest
     steps:
     - name: Checkout code
@@ -54,15 +54,16 @@ jobs:
         python -m pip install bandit
         
     - name: Run Bandit
-      continue-on-error: true  # Zodat de workflow doorgaat zelfs als Bandit issues vindt
+      # In productie: verwijder continue-on-error zodat pipeline faalt bij problemen
+      continue-on-error: true
       run: |
-        # Voer Bandit uit en toon direct de resultaten
-        bandit -r . --severity-level high -f json -o bandit-results.json || true
+        # Eenvoudige productie-level scan
+        bandit -r . -ll -f json -o bandit-results.json || true
         
-        # Simpele weergave van gevonden problemen
+        # Toon bevindingen
         if [ -f bandit-results.json ]; then
-          echo "=== Gevonden beveiligingsproblemen ==="
-          jq -r '.results[] | "- \(.issue_text) in \(.filename) lijn \(.line_number)"' bandit-results.json
+          echo "=== Beveiligingsproblemen ==="
+          jq -r '.results[] | "[\(.issue_severity)] \(.issue_text) in \(.filename) lijn \(.line_number)"' bandit-results.json
         fi
         
     - name: Upload Bandit Results
@@ -72,7 +73,7 @@ jobs:
         path: bandit-results.json
         if-no-files-found: warn
 
-        
+
   sast-scans:
     name: Run All Scans
     runs-on: ubuntu-latest
