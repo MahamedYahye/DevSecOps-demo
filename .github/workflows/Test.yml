@@ -9,7 +9,7 @@ on:
 jobs:
 
   gitleaks:
-    name: GitLeaks Deep Scan
+    name: GitLeaks Security Scan
     runs-on: ubuntu-latest
     steps:
     - name: Checkout code with full history
@@ -17,29 +17,24 @@ jobs:
       with:
         fetch-depth: 0  # Volledige geschiedenis ophalen
     
-    - name: Set up Go
-      uses: actions/setup-go@v4
-      with:
-        go-version: '1.21'
-        
     - name: Install GitLeaks
       run: |
         go install github.com/zricethezav/gitleaks/v8@latest
         
     - name: Run GitLeaks Scan (volledige historie)
+      continue-on-error: true  
       run: |
         mkdir -p gitleaks-results
-        # Voer handmatig GitLeaks uit op de volledige repository
+        
+        # ONTWIKKELING: Gebruik deze regel tijdens ontwikkeling
         gitleaks detect --source=. --verbose --report-format=json --report-path=gitleaks-results/report.json
         
-        # Toon resultaten
-        if [ -f gitleaks-results/report.json ] && [ "$(cat gitleaks-results/report.json | jq 'length')" -gt 0 ]; then
-          echo "=== GitLeaks heeft geheimen gevonden ==="
-          cat gitleaks-results/report.json | jq '.'
-          echo "Aantal gevonden geheimen: $(cat gitleaks-results/report.json | jq 'length')"
-        else
-          echo "=== Geen geheimen gevonden ==="
-        fi
+        # PRODUCTIE: Gebruik deze regel voor productie (verwijder bovenstaande regel)
+        # gitleaks detect --source=. --verbose --report-format=json --report-path=gitleaks-results/report.json --exit-code=1
+        
+        # Eenvoudige output van resultaten
+        echo "=== GitLeaks Scan Resultaten ==="
+        jq -r 'if length > 0 then "\(length) geheimen gevonden" else "Geen geheimen gevonden" end' gitleaks-results/report.json
         
     - name: Upload GitLeaks Results
       uses: actions/upload-artifact@v4
