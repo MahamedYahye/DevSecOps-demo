@@ -9,18 +9,44 @@ on:
 jobs:
 
   gitleaks:
-    name: GitLeaks Security Scan
+    name: GitLeaks Deep Scan
     runs-on: ubuntu-latest
     steps:
-    - name: Checkout code
+    - name: Checkout code with full history
       uses: actions/checkout@v4
       with:
-        fetch-depth: 0  # Dit zorgt ervoor dat de volledige git geschiedenis wordt opgehaald
+        fetch-depth: 0  # Volledige geschiedenis ophalen
     
-    - name: Run GitLeaks
-      uses: gitleaks/gitleaks-action@v2
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+        
+    - name: Install GitLeaks
+      run: |
+        go install github.com/zricethezav/gitleaks/v8@latest
+        
+    - name: Run GitLeaks Scan (volledige historie)
+      run: |
+        mkdir -p gitleaks-results
+        # Voer handmatig GitLeaks uit op de volledige repository
+        gitleaks detect --source=. --verbose --report-format=json --report-path=gitleaks-results/report.json
+        
+        # Toon resultaten
+        if [ -f gitleaks-results/report.json ] && [ "$(cat gitleaks-results/report.json | jq 'length')" -gt 0 ]; then
+          echo "=== GitLeaks heeft geheimen gevonden ==="
+          cat gitleaks-results/report.json | jq '.'
+          echo "Aantal gevonden geheimen: $(cat gitleaks-results/report.json | jq 'length')"
+        else
+          echo "=== Geen geheimen gevonden ==="
+        fi
+        
+    - name: Upload GitLeaks Results
+      uses: actions/upload-artifact@v4
+      with:
+        name: gitleaks-results
+        path: gitleaks-results/
+        if-no-files-found: warn
 
   semgrep:
     name: Semgrep Scan
