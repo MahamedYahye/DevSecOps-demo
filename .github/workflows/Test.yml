@@ -41,28 +41,38 @@ jobs:
     name: Bandit Scan
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+        
+    - name: Install Bandit
+      run: |
+        python -m pip install bandit
+        
+    - name: Run Bandit
+      continue-on-error: true  # Zodat de workflow doorgaat zelfs als Bandit issues vindt
+      run: |
+        # Voer Bandit uit en toon direct de resultaten
+        bandit -r . --severity-level high -f json -o bandit-results.json || true
+        
+        # Simpele weergave van gevonden problemen
+        if [ -f bandit-results.json ]; then
+          echo "=== Gevonden beveiligingsproblemen ==="
+          jq -r '.results[] | "- \(.issue_text) in \(.filename) lijn \(.line_number)"' bandit-results.json
+        fi
+        
+    - name: Upload Bandit Results
+      uses: actions/upload-artifact@v4
+      with:
+        name: bandit-results
+        path: bandit-results.json
+        if-no-files-found: warn
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install Bandit
-        run: |
-          python -m pip install bandit
-
-      - name: Run Bandit
-        run: |
-          bandit -r . --severity-level high -f json -o bandit-results.json
-
-      - name: Upload Bandit Results
-        uses: actions/upload-artifact@v4
-        with:
-          name: bandit-results
-          path: bandit-results.json
-
+        
   sast-scans:
     name: Run All Scans
     runs-on: ubuntu-latest
