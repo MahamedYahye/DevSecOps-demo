@@ -12,36 +12,15 @@ jobs:
     name: GitLeaks Security Scan
     runs-on: ubuntu-latest
     steps:
-    - name: Checkout code with full history
+    - name: Checkout code
       uses: actions/checkout@v4
       with:
-        fetch-depth: 0  # Volledige geschiedenis ophalen
+        fetch-depth: 0  # Dit zorgt ervoor dat de volledige git geschiedenis wordt opgehaald
     
-    - name: Install GitLeaks
-      run: |
-        go install github.com/zricethezav/gitleaks/v8@latest
-        
-    - name: Run GitLeaks Scan (volledige historie)
-      continue-on-error: true  
-      run: |
-        mkdir -p gitleaks-results
-        
-        # ONTWIKKELING: Gebruik deze regel tijdens ontwikkeling
-        gitleaks detect --source=. --verbose --report-format=json --report-path=gitleaks-results/report.json
-        
-        # PRODUCTIE: Gebruik deze regel voor productie (verwijder bovenstaande regel)
-        # gitleaks detect --source=. --verbose --report-format=json --report-path=gitleaks-results/report.json --exit-code=1
-        
-        # Eenvoudige output van resultaten
-        echo "=== GitLeaks Scan Resultaten ==="
-        jq -r 'if length > 0 then "\(length) geheimen gevonden" else "Geen geheimen gevonden" end' gitleaks-results/report.json
-        
-    - name: Upload GitLeaks Results
-      uses: actions/upload-artifact@v4
-      with:
-        name: gitleaks-results
-        path: gitleaks-results/
-        if-no-files-found: warn
+    - name: Run GitLeaks
+      uses: gitleaks/gitleaks-action@v2
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   semgrep:
     name: Semgrep Scan
