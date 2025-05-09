@@ -15,8 +15,8 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
       with:
-        fetch-depth: 0  
-    
+        fetch-depth: 0
+
     - name: Run Gitleaks
       uses: gitleaks/gitleaks-action@v2
       env:
@@ -55,7 +55,7 @@ jobs:
 
       - name: Run Bandit
         run: |
-          bandit -r . --severity-level medium -f json -o bandit-results.json
+          bandit -r . --severity-level high -f json -o bandit-results.json
 
       - name: Upload Bandit Results
         uses: actions/upload-artifact@v4

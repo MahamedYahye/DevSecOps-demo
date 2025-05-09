@@ -1,17 +1,17 @@
 # # name: OWASP ZAP Security Scan
 
 # # on:
-# #     workflow_dispatch:  
+# #     workflow_dispatch:
 # #     push:
-# #       branches: [ main ]  
+# #       branches: [ main ]
 # # jobs:
 # #  zap-scan:
-# #    runs-on: self-hosted  
-   
+# #    runs-on: self-hosted
+
 # #    steps:
 # #    - name: Checkout code
 # #      uses: actions/checkout@v4
-   
+
 # #    - name: Test URL connectivity
 # #      run: |
 # #        echo "Testing connection to target URL: http://localhost:8081"
@@ -22,7 +22,7 @@
 # #          echo "Make sure port-forwarding is running with: kubectl port-forward service/flask-app 8081:80"
 # #          exit 1
 # #        fi
-   
+
 # #    - name: Run ZAP Scan
 # #      run: |
 # #        echo "Scanning target URL: http://host.docker.internal:8081"
@@ -31,7 +31,7 @@
 # #          -v "$(pwd)/zap-report:/zap/wrk" \
 # #          zaproxy/zap-stable:latest \
 # #          zap-baseline.py -t http://host.docker.internal:8081 -g gen.conf -r zap-report.html
-   
+
 # #    - name: Check ZAP result
 # #      run: |
 # #        if [ -f "zap-report/zap-report.html" ]; then
@@ -41,7 +41,7 @@
 # #          echo "❌ ZAP report not found. The scan might have failed."
 # #          exit 1
 # #        fi
-   
+
 # #    - name: Upload ZAP report
 # #      if: always()  # Upload report even if previous steps failed
 # #      uses: actions/upload-artifact@v4
@@ -88,12 +88,12 @@
 #           RETRY_COUNT=0
 #           SUCCESS_COUNT=0
 #           REQUIRED_SUCCESSES=3
-          
+
 #           echo "Verifying application availability at http://localhost:8282"
-          
+
 #           while [ $RETRY_COUNT -lt $MAX_RETRIES ] && [ $SUCCESS_COUNT -lt $REQUIRED_SUCCESSES ]; do
 #             RETRY_COUNT=$((RETRY_COUNT+1))
-            
+
 #             if curl -s --head --fail http://localhost:8282 > /dev/null; then
 #               SUCCESS_COUNT=$((SUCCESS_COUNT+1))
 #               echo "✅ Health check succeeded ($SUCCESS_COUNT/$REQUIRED_SUCCESSES)"
@@ -101,13 +101,13 @@
 #               SUCCESS_COUNT=0
 #               echo "❌ Health check failed, resetting success count"
 #             fi
-            
+
 #             if [ $SUCCESS_COUNT -lt $REQUIRED_SUCCESSES ]; then
 #               echo "Waiting 30 seconds before next check..."
 #               sleep 30
 #             fi
 #           done
-          
+
 #           if [ $SUCCESS_COUNT -ge $REQUIRED_SUCCESSES ]; then
 #             echo "✅ Application deployment verified! Ready for security scan."
 #           else
@@ -122,11 +122,11 @@
 #     steps:
 #     - name: Checkout code
 #       uses: actions/checkout@v4
-      
+
 #     - name: Prepare report directory
 #       run: |
 #         mkdir -p zap-report
-   
+
 #     - name: Run ZAP Scan
 #       id: zap
 #       continue-on-error: true
@@ -136,10 +136,10 @@
 #           -v "$(pwd)/zap-report:/zap/wrk" \
 #           zaproxy/zap-stable:latest \
 #           zap-baseline.py -t http://host.docker.internal:8282 -r zap-report.html -x zap-report.xml
-        
+
 #         # Status code opslaan
 #         echo "zap_status=$?" >> $GITHUB_OUTPUT
-   
+
 #     - name: Check for critical vulnerabilities
 #       continue-on-error: true  # Deze stap gaat altijd door, zelfs bij hoge risico's
 #       run: |
@@ -147,9 +147,9 @@
 #           echo "Checking for critical vulnerabilities in scan results..."
 #           # Tel alleen kritieke kwetsbaarheden (high/critical)
 #           HIGH_COUNT=$(grep -c "High" zap-report/zap-report.html || echo 0)
-          
+
 #           echo "Number of HIGH risk vulnerabilities: $HIGH_COUNT"
-          
+
 #           if [ "$HIGH_COUNT" -gt 0 ]; then
 #             echo "⚠️ WAARSCHUWING: $HIGH_COUNT kritieke kwetsbaarheden gevonden, maar doorgaan met pipeline"
 #           else
@@ -161,7 +161,7 @@
 #             echo "ZAP scan exited with status code ${{ steps.zap.outputs.zap_status }}"
 #           fi
 #         fi
-   
+
 #     - name: Upload ZAP report
 #       if: always()  # Upload report even if previous steps failed
 #       uses: actions/upload-artifact@v4
