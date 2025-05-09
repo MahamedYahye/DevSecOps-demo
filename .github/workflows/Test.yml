@@ -16,12 +16,13 @@ jobs:
       uses: actions/checkout@v4
       with:
         fetch-depth: 0  # Haalt volledige geschiedenis op
-    
+
     - name: Run GitLeaks
       uses: gitleaks/gitleaks-action@v2
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        GITLEAKS_ENABLE_COMMENTS: true  # Voegt opmerkingen toe aan PRs
+        GITLEAKS_DEPTH: "all"  # Instellen op 'all' om alle commits te scannen
+        GITLEAKS_VERBOSE: true  # Meer output voor debugging
       continue-on-error: true  # Voorkomt dat de workflow faalt bij gevonden geheimen
 
   semgrep:
