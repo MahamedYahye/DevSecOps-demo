@@ -123,7 +123,7 @@ jobs:
         with:
           fetch-depth: 0
           
-      - name: Install latest GitLeaks version
+      - name: Install GitLeaks
         run: |
           wget https://github.com/zricethezav/gitleaks/releases/download/v8.18.1/gitleaks_8.18.1_linux_x64.tar.gz
           tar -xzf gitleaks_8.18.1_linux_x64.tar.gz
@@ -141,7 +141,6 @@ jobs:
           echo "=== GitLeaks Resultaten ==="
           if [ -f gitleaks-results.json ]; then
             FOUND=$(jq 'length' gitleaks-results.json)
-            echo "found=$FOUND" >> $GITHUB_OUTPUT
             
             if [ "$FOUND" -gt 0 ]; then
               echo "⚠️ GitLeaks heeft $FOUND potentiële geheimen gevonden"
@@ -161,49 +160,49 @@ jobs:
   semgrep:
     name: Semgrep Scan
     runs-on: ubuntu-latest
-    permissions:
-      security-events: write
-      contents: read
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        
-      - name: Run Semgrep
-        uses: semgrep/semgrep-action@v1
-        id: semgrep_scan
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          config: p/default
-          generateSarif: true
-          outputFile: semgrep-results.json
-        continue-on-error: true
+          python-version: '3.11'
         
-      - name: Show Semgrep results
-        if: always()
+      - name: Install Semgrep
         run: |
-          if [ -f semgrep-results.json ]; then
-            echo "=== Semgrep Resultaten ==="
-            FINDINGS=$(jq '.results | length' semgrep-results.json 2>/dev/null || echo "0")
+          python -m pip install semgrep
+        
+      - name: Run Semgrep scan
+        id: semgrep_scan
+        continue-on-error: true
+        run: |
+          # Maak results directory
+          mkdir -p semgrep-results
+          
+          # Voer Semgrep uit
+          semgrep --config p/default --json --output semgrep-results/results.json .
+          
+          # Toon bevindingen
+          echo "=== Semgrep Resultaten ==="
+          if [ -f semgrep-results/results.json ]; then
+            FINDINGS=$(jq '.results | length' semgrep-results/results.json)
             
             if [ "$FINDINGS" -gt 0 ]; then
               echo "⚠️ Semgrep heeft $FINDINGS bevindingen gedetecteerd"
-              jq -r '.results[] | "- \(.check_id): \(.extra.message) in \(.path):\(.start.line)"' semgrep-results.json
+              jq -r '.results[] | "- \(.check_id): \(.extra.message) in \(.path):\(.start.line)"' semgrep-results/results.json
             else
               echo "✅ Geen bevindingen gedetecteerd"
             fi
           else
-            echo "Geen semgrep-results.json gevonden"
-            # Zoek waar resultaten mogelijk zijn opgeslagen
-            find . -name "*.json" | grep -i semgrep || echo "Geen Semgrep JSON bestanden gevonden"
+            echo "Geen Semgrep resultaten gevonden"
           fi
           
       - name: Upload Semgrep Results
-        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: semgrep-results
-          path: |
-            semgrep-results.json
-            .semgrep/
+          path: semgrep-results/
           if-no-files-found: warn
 
   bandit:
@@ -226,24 +225,24 @@ jobs:
         id: bandit_scan
         continue-on-error: true
         run: |
+          # Maak results directory
+          mkdir -p bandit-results
+          
           # Productie-level scan
-          bandit -r . -ll -f json -o bandit-results.json || true
+          bandit -r . -ll -f json -o bandit-results/results.json || true
           
           # Toon bevindingen
-          if [ -f bandit-results.json ]; then
+          if [ -f bandit-results/results.json ]; then
             echo "=== Beveiligingsproblemen ==="
-            HIGH_COUNT=$(jq '.results | map(select(.issue_severity == "HIGH")) | length' bandit-results.json)
-            MEDIUM_COUNT=$(jq '.results | map(select(.issue_severity == "MEDIUM")) | length' bandit-results.json)
-            LOW_COUNT=$(jq '.results | map(select(.issue_severity == "LOW")) | length' bandit-results.json)
+            HIGH_COUNT=$(jq '.results | map(select(.issue_severity == "HIGH")) | length' bandit-results/results.json)
+            MEDIUM_COUNT=$(jq '.results | map(select(.issue_severity == "MEDIUM")) | length' bandit-results/results.json)
+            LOW_COUNT=$(jq '.results | map(select(.issue_severity == "LOW")) | length' bandit-results/results.json)
             TOTAL=$((HIGH_COUNT + MEDIUM_COUNT + LOW_COUNT))
-            
-            echo "high=$HIGH_COUNT" >> $GITHUB_OUTPUT
-            echo "total=$TOTAL" >> $GITHUB_OUTPUT
             
             echo "Hoog: $HIGH_COUNT, Gemiddeld: $MEDIUM_COUNT, Laag: $LOW_COUNT, Totaal: $TOTAL"
             
             if [ "$TOTAL" -gt 0 ]; then
-              jq -r '.results[] | "[\(.issue_severity)] \(.issue_text) in \(.filename) lijn \(.line_number)"' bandit-results.json
+              jq -r '.results[] | "[\(.issue_severity)] \(.issue_text) in \(.filename) lijn \(.line_number)"' bandit-results/results.json
             fi
           fi
           
@@ -251,60 +250,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: bandit-results
-          path: bandit-results.json
+          path: bandit-results/
           if-no-files-found: warn
-
-  sast-summary:
-    name: Security Scans Summary
-    runs-on: ubuntu-latest
-    needs: [gitleaks, semgrep, bandit]
-    if: always()
-    steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: all-artifacts
-          
-      - name: Debug artifacts
-        run: |
-          echo "Inhoud van gedownloade artifacts:"
-          find all-artifacts -type f | sort
-          
-      - name: Generate summary
-        run: |
-          echo "## Security Scan Resultaten" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          
-          # Tel resultaten
-          GITLEAKS_COUNT=$(jq 'length' all-artifacts/gitleaks-results/gitleaks-results.json 2>/dev/null || echo "0")
-          
-          # Semgrep resultaten tellen (aangepast voor nieuwe locatie)
-          SEMGREP_COUNT=0
-          if [ -f all-artifacts/semgrep-results/semgrep-results.json ]; then
-            SEMGREP_COUNT=$(jq '.results | length' all-artifacts/semgrep-results/semgrep-results.json 2>/dev/null || echo "0")
-          elif [ -d all-artifacts/semgrep-results/.semgrep ]; then
-            # Fallback: zoek in .semgrep directory
-            SARIF_FILE=$(find all-artifacts/semgrep-results/.semgrep -name "*.sarif" 2>/dev/null | head -n 1)
-            if [ -n "$SARIF_FILE" ]; then
-              SEMGREP_COUNT=$(grep -o "\"level\": \"error\"" "$SARIF_FILE" | wc -l || echo "0")
-            fi
-          fi
-          
-          HIGH_COUNT=$(jq '.results | map(select(.issue_severity == "HIGH")) | length' all-artifacts/bandit-results/bandit-results.json 2>/dev/null || echo "0")
-          
-          # Toon eenvoudige tabel
-          echo "| Tool | Bevindingen |" >> $GITHUB_STEP_SUMMARY
-          echo "| ---- | ----------- |" >> $GITHUB_STEP_SUMMARY
-          echo "| GitLeaks | $GITLEAKS_COUNT |" >> $GITHUB_STEP_SUMMARY
-          echo "| Semgrep | $SEMGREP_COUNT |" >> $GITHUB_STEP_SUMMARY
-          echo "| Bandit (Hoog) | $HIGH_COUNT |" >> $GITHUB_STEP_SUMMARY
-          
-          TOTAL=$((GITLEAKS_COUNT + SEMGREP_COUNT + HIGH_COUNT))
-          if [ "$TOTAL" -gt 0 ]; then
-            echo "⚠️ $TOTAL beveiligingsproblemen gevonden" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "✅ Geen kritieke beveiligingsproblemen gevonden" >> $GITHUB_STEP_SUMMARY
-          fi
-          
-      - name: Summary
-        run: echo "Security scans completed. Check the summary tab for results."
