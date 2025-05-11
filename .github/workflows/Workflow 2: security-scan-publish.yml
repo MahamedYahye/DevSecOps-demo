@@ -15,14 +15,40 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
+      # Verbeterde artifact download methode
       - name: Download Docker image artifact
-        uses: dawidd6/action-download-artifact@v2
+        uses: actions/github-script@v6
         with:
-          workflow: build-docker-image.yml
-          name: docker-image
-          path: image-artifact
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          workflow_conclusion: success
+          script: |
+            const artifacts = await github.rest.actions.listWorkflowRunArtifacts({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: ${{ github.event.workflow_run.id }}
+            });
+            
+            const matchingArtifact = artifacts.data.artifacts.find(artifact => artifact.name === "docker-image");
+            if (!matchingArtifact) {
+              core.setFailed("No Docker image artifact found");
+              return;
+            }
+            
+            const download = await github.rest.actions.downloadArtifact({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              artifact_id: matchingArtifact.id,
+              archive_format: 'zip'
+            });
+            
+            const fs = require('fs');
+            fs.writeFileSync('docker-image.zip', Buffer.from(download.data));
+            
+            console.log('Artifact downloaded successfully');
+            
+      - name: Extract Docker image
+        run: |
+          mkdir -p image-artifact
+          unzip docker-image.zip -d image-artifact
+          ls -la image-artifact/
           
       - name: Load Docker image
         run: |
@@ -86,14 +112,45 @@ jobs:
     needs: security_scan
     runs-on: ubuntu-latest
     steps:
-      - name: Download Docker image artifact
-        uses: dawidd6/action-download-artifact@v2
+      - name: Checkout code
+        uses: actions/checkout@v3
         with:
-          workflow: build-docker-image.yml
-          name: docker-image
-          path: image-artifact
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          workflow_conclusion: success
+          fetch-depth: 0
+
+      # Zelfde verbeterde artifact download methode
+      - name: Download Docker image artifact
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const artifacts = await github.rest.actions.listWorkflowRunArtifacts({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: ${{ github.event.workflow_run.id }}
+            });
+            
+            const matchingArtifact = artifacts.data.artifacts.find(artifact => artifact.name === "docker-image");
+            if (!matchingArtifact) {
+              core.setFailed("No Docker image artifact found");
+              return;
+            }
+            
+            const download = await github.rest.actions.downloadArtifact({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              artifact_id: matchingArtifact.id,
+              archive_format: 'zip'
+            });
+            
+            const fs = require('fs');
+            fs.writeFileSync('docker-image.zip', Buffer.from(download.data));
+            
+            console.log('Artifact downloaded successfully');
+            
+      - name: Extract Docker image
+        run: |
+          mkdir -p image-artifact
+          unzip docker-image.zip -d image-artifact
+          ls -la image-artifact/
       
       - name: Load Docker image
         run: |
@@ -117,11 +174,6 @@ jobs:
           docker push ghcr.io/${{ github.repository_owner }}/flask-app:latest
           
           echo "Successfully pushed image to GitHub Container Registry"
-
-      - name: Checkout code for tagging
-        uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
 
       - name: Create Git Tag
         run: |
