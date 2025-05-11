@@ -170,13 +170,22 @@ jobs:
         uses: semgrep/semgrep-action@v1
         with:
           config: auto
+          generateSarif: true
         continue-on-error: true
+        
+      - name: Find Semgrep results
+        run: |
+          echo "Zoeken naar Semgrep resultaatbestanden..."
+          find . -name "*.sarif" || echo "Geen SARIF bestanden gevonden"
+          ls -la .semgrep/ || echo "Geen .semgrep map gevonden"
           
       - name: Upload Semgrep Results
         uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: semgrep-results
-          path: semgrep-results/
+          path: |
+            .semgrep/
           if-no-files-found: warn
 
   bandit:
@@ -238,6 +247,11 @@ jobs:
         with:
           path: all-artifacts
           
+      - name: Debug artifacts
+        run: |
+          echo "Inhoud van gedownloade artifacts:"
+          find all-artifacts -type f | sort
+          
       - name: Generate summary
         run: |
           echo "## Security Scan Resultaten" >> $GITHUB_STEP_SUMMARY
@@ -245,7 +259,18 @@ jobs:
           
           # Tel resultaten
           GITLEAKS_COUNT=$(jq 'length' all-artifacts/gitleaks-results/gitleaks-results.json 2>/dev/null || echo "0")
-          SEMGREP_COUNT=$(grep -o "\"level\": \"error\"" all-artifacts/semgrep-results/semgrep.sarif 2>/dev/null | wc -l || echo "0")
+          
+          # Semgrep results tellen
+          SEMGREP_COUNT=0
+          if [ -d "all-artifacts/semgrep-results" ]; then
+            # Zoek naar het SARIF bestand in de .semgrep map
+            if [ -f all-artifacts/semgrep-results/.semgrep/semgrep.sarif ]; then
+              SEMGREP_COUNT=$(grep -o "\"level\": \"error\"" all-artifacts/semgrep-results/.semgrep/semgrep.sarif 2>/dev/null | wc -l || echo "0")
+            elif [ -f all-artifacts/semgrep-results/semgrep.sarif ]; then
+              SEMGREP_COUNT=$(grep -o "\"level\": \"error\"" all-artifacts/semgrep-results/semgrep.sarif 2>/dev/null | wc -l || echo "0")
+            fi
+          fi
+          
           HIGH_COUNT=$(jq '.results | map(select(.issue_severity == "HIGH")) | length' all-artifacts/bandit-results/bandit-results.json 2>/dev/null || echo "0")
           
           # Toon eenvoudige tabel
