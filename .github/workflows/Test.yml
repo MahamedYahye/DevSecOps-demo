@@ -161,30 +161,48 @@ jobs:
   semgrep:
     name: Semgrep Scan
     runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         
       - name: Run Semgrep
-        id: semgrep_scan
         uses: semgrep/semgrep-action@v1
+        id: semgrep_scan
         with:
-          config: auto
+          config: p/default
           generateSarif: true
+          outputFile: semgrep-results.json
         continue-on-error: true
         
-      - name: Find Semgrep results
+      - name: Show Semgrep results
+        if: always()
         run: |
-          echo "Zoeken naar Semgrep resultaatbestanden..."
-          find . -name "*.sarif" || echo "Geen SARIF bestanden gevonden"
-          ls -la .semgrep/ || echo "Geen .semgrep map gevonden"
+          if [ -f semgrep-results.json ]; then
+            echo "=== Semgrep Resultaten ==="
+            FINDINGS=$(jq '.results | length' semgrep-results.json 2>/dev/null || echo "0")
+            
+            if [ "$FINDINGS" -gt 0 ]; then
+              echo "⚠️ Semgrep heeft $FINDINGS bevindingen gedetecteerd"
+              jq -r '.results[] | "- \(.check_id): \(.extra.message) in \(.path):\(.start.line)"' semgrep-results.json
+            else
+              echo "✅ Geen bevindingen gedetecteerd"
+            fi
+          else
+            echo "Geen semgrep-results.json gevonden"
+            # Zoek waar resultaten mogelijk zijn opgeslagen
+            find . -name "*.json" | grep -i semgrep || echo "Geen Semgrep JSON bestanden gevonden"
+          fi
           
       - name: Upload Semgrep Results
-        uses: actions/upload-artifact@v4
         if: always()
+        uses: actions/upload-artifact@v4
         with:
           name: semgrep-results
           path: |
+            semgrep-results.json
             .semgrep/
           if-no-files-found: warn
 
@@ -260,14 +278,15 @@ jobs:
           # Tel resultaten
           GITLEAKS_COUNT=$(jq 'length' all-artifacts/gitleaks-results/gitleaks-results.json 2>/dev/null || echo "0")
           
-          # Semgrep results tellen
+          # Semgrep resultaten tellen (aangepast voor nieuwe locatie)
           SEMGREP_COUNT=0
-          if [ -d "all-artifacts/semgrep-results" ]; then
-            # Zoek naar het SARIF bestand in de .semgrep map
-            if [ -f all-artifacts/semgrep-results/.semgrep/semgrep.sarif ]; then
-              SEMGREP_COUNT=$(grep -o "\"level\": \"error\"" all-artifacts/semgrep-results/.semgrep/semgrep.sarif 2>/dev/null | wc -l || echo "0")
-            elif [ -f all-artifacts/semgrep-results/semgrep.sarif ]; then
-              SEMGREP_COUNT=$(grep -o "\"level\": \"error\"" all-artifacts/semgrep-results/semgrep.sarif 2>/dev/null | wc -l || echo "0")
+          if [ -f all-artifacts/semgrep-results/semgrep-results.json ]; then
+            SEMGREP_COUNT=$(jq '.results | length' all-artifacts/semgrep-results/semgrep-results.json 2>/dev/null || echo "0")
+          elif [ -d all-artifacts/semgrep-results/.semgrep ]; then
+            # Fallback: zoek in .semgrep directory
+            SARIF_FILE=$(find all-artifacts/semgrep-results/.semgrep -name "*.sarif" 2>/dev/null | head -n 1)
+            if [ -n "$SARIF_FILE" ]; then
+              SEMGREP_COUNT=$(grep -o "\"level\": \"error\"" "$SARIF_FILE" | wc -l || echo "0")
             fi
           fi
           
