@@ -16,7 +16,7 @@ jobs:
         uses: actions/checkout@v3
 
       - name: Download Docker image artifact
-        uses: dawidd6/action-download-artifact@v2
+        uses: dawidd6/action-download-artifact@v6
         with:
           workflow: build-docker-image.yml
           name: docker-image
@@ -87,7 +87,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download Docker image artifact
-        uses: dawidd6/action-download-artifact@v2
+        uses: dawidd6/action-download-artifact@v6
         with:
           workflow: build-docker-image.yml
           name: docker-image
