@@ -1,88 +1,99 @@
-name: Build and Version Docker Image
+name: Build, Scan and Push
 on:
-  workflow_dispatch:
-    inputs:
-      version_increment:
-        description: 'Type of version increment (patch, minor, major)'
-        required: true
-        default: 'patch'
-        type: choice
-        options:
-          - patch
-          - minor
-          - major
+  workflow_dispatch:  # Handmatig triggeren
   push:
-    branches: [main]
+    branches: [main]  # Bij pushes naar main branch
 
 jobs:
-  build_docker_image:
-    name: Build and Version
+  build_scan_push:
+    name: Build, Scan and Push Docker Image
     runs-on: ubuntu-latest
-    outputs:
-      image_tag: ${{ steps.semver.outputs.version }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-
-      - name: Generate SemVer Tag
-        id: semver
-        run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            INCREMENT_TYPE="${{ github.event.inputs.version_increment }}"
-          else
-            INCREMENT_TYPE="patch"
-          fi
-          
-          echo "Increment type: $INCREMENT_TYPE"
-          
-          LATEST_TAG=$(git describe --tags --abbrev=0 --match "v*" 2>/dev/null || echo "v0.0.0")
-          LATEST_VERSION=${LATEST_TAG#v}
-          
-          echo "Latest version: $LATEST_VERSION"
-          
-          IFS='.' read -r MAJOR MINOR PATCH <<< "$LATEST_VERSION"
-          
-          case "$INCREMENT_TYPE" in
-            "major")
-              MAJOR=$((MAJOR+1))
-              MINOR=0
-              PATCH=0
-              ;;
-            "minor")
-              MINOR=$((MINOR+1))
-              PATCH=0
-              ;;
-            "patch")
-              PATCH=$((PATCH+1))
-              ;;
-          esac
-          
-          NEW_VERSION="$MAJOR.$MINOR.$PATCH"
-          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
-          echo "Creating image with tag: $NEW_VERSION"
 
       - name: Build Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
           load: true
-          tags: flask-app:${{ steps.semver.outputs.version }}
+          tags: flask-app:${{ github.sha }}
           push: false
 
-      - name: Export Docker image
+      - name: Install Syft and Generate SBOM
         run: |
-          mkdir -p image-artifact
-          docker save flask-app:${{ steps.semver.outputs.version }} > image-artifact/flask-app.tar
-          echo ${{ steps.semver.outputs.version }} > image-artifact/version.txt
+          mkdir -p scan-results
+          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+          
+          syft flask-app:${{ github.sha }} -o cyclonedx-json=scan-results/sbom.cyclonedx.json -o spdx-json=scan-results/sbom.spdx.json
+          
+          echo "Package Summary:"
+          syft flask-app:${{ github.sha }} -o table | head -n 20
 
-      - name: Upload Docker image as artifact
+      - name: Install Grype and Scan for Vulnerabilities
+        id: vulnerability_scan
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
+          
+          grype flask-app:${{ github.sha }} -o json > scan-results/grype-vulnerabilities.json
+          
+          echo "Vulnerability Summary:"
+          CRITICAL_COUNT=$(jq '.matches | map(select(.vulnerability.severity == "Critical")) | length' scan-results/grype-vulnerabilities.json)
+          HIGH_COUNT=$(jq '.matches | map(select(.vulnerability.severity == "High")) | length' scan-results/grype-vulnerabilities.json)
+          
+          echo "Critical vulnerabilities: $CRITICAL_COUNT"
+          echo "High vulnerabilities: $HIGH_COUNT"
+          
+          # Store the count for later steps
+          echo "critical_vulnerabilities=$CRITICAL_COUNT" >> $GITHUB_OUTPUT
+          echo "high_vulnerabilities=$HIGH_COUNT" >> $GITHUB_OUTPUT
+          
+          if [ "$CRITICAL_COUNT" -gt 0 ]; then
+            echo "WARNING: $CRITICAL_COUNT critical vulnerabilities found"
+            echo "Top Critical Vulnerabilities:"
+            jq -r '.matches | map(select(.vulnerability.severity == "Critical")) | .[0:5] | .[] | "\(.vulnerability.id) in \(.artifact.name) v\(.artifact.version)"' scan-results/grype-vulnerabilities.json
+          fi
+
+      - name: Upload scan results
         uses: actions/upload-artifact@v4
         with:
-          name: docker-image
-          path: image-artifact/
-          retention-days: 1
+          name: scan-results-${{ github.sha }}
+          path: scan-results/
+          retention-days: 30
+
+      - name: Security Gate
+        id: security_gate
+        run: |
+          CRITICAL_COUNT=${{ steps.vulnerability_scan.outputs.critical_vulnerabilities }}
+          
+          if [ "$CRITICAL_COUNT" -gt 0 ]; then
+            echo "FAILED: $CRITICAL_COUNT critical vulnerabilities found"
+            echo "⛔ Security gate failed - pushing of image aborted"
+            exit 1
+          else
+            echo "✅ Security gate passed - proceeding to push image"
+          fi
+
+      - name: Login to Azure Container Registry
+        if: success()
+        uses: azure/docker-login@v1
+        with:
+          login-server: ${{ secrets.ACR_LOGIN_SERVER }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Tag and Push Docker image
+        if: success()
+        run: |
+          # Tag voor ACR
+          docker tag flask-app:${{ github.sha }} ${{ secrets.ACR_LOGIN_SERVER }}/flask-app:latest
+          docker tag flask-app:${{ github.sha }} ${{ secrets.ACR_LOGIN_SERVER }}/flask-app:${{ github.sha }}
+          
+          # Push naar ACR
+          docker push ${{ secrets.ACR_LOGIN_SERVER }}/flask-app:latest
+          docker push ${{ secrets.ACR_LOGIN_SERVER }}/flask-app:${{ github.sha }}
+          
+          echo "Successfully pushed secure image to Azure Container Registry"
