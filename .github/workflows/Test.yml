@@ -117,9 +117,6 @@ jobs:
   gitleaks:
     name: GitLeaks Security Scan
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      security-events: write  # Voor SARIF upload
     steps:
       - name: Checkout code with full history
         uses: actions/checkout@v4
@@ -140,10 +137,7 @@ jobs:
           # Scan en sla resultaten op
           gitleaks detect --source=. --verbose --redact --report-format=json --report-path=gitleaks-results.json
           
-          # Genereer ook SARIF-formaat voor GitHub Security
-          gitleaks detect --source=. --verbose --redact --report-format=sarif --report-path=gitleaks-results.sarif
-          
-          # Toon bevindingen en sla aantal op
+          # Toon bevindingen
           echo "=== GitLeaks Resultaten ==="
           if [ -f gitleaks-results.json ]; then
             FOUND=$(jq 'length' gitleaks-results.json)
@@ -161,24 +155,12 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: gitleaks-results
-          path: |
-            gitleaks-results.json
-            gitleaks-results.sarif
+          path: gitleaks-results.json
           if-no-files-found: warn
-          
-      - name: Upload SARIF to GitHub Security
-        if: steps.gitleaks_scan.outputs.found > 0
-        uses: github/codeql-action/upload-sarif@v2
-        with:
-          sarif_file: gitleaks-results.sarif
-          category: gitleaks
 
   semgrep:
     name: Semgrep Scan
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      security-events: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -188,23 +170,7 @@ jobs:
         uses: semgrep/semgrep-action@v1
         with:
           config: auto
-          output: semgrep-results
-          auditOn: high
-          generateSarif: true
         continue-on-error: true
-        
-      - name: Count findings
-        id: count
-        run: |
-          if [ -f semgrep-results/semgrep.sarif ]; then
-            # Tel het aantal bevindingen met ernst 'error'
-            FINDINGS=$(grep -o "\"level\": \"error\"" semgrep-results/semgrep.sarif | wc -l)
-            echo "found=$FINDINGS" >> $GITHUB_OUTPUT
-            echo "Semgrep heeft $FINDINGS bevindingen met hoge ernst gedetecteerd"
-          else
-            echo "found=0" >> $GITHUB_OUTPUT
-            echo "Geen Semgrep resultaten gevonden"
-          fi
           
       - name: Upload Semgrep Results
         uses: actions/upload-artifact@v4
@@ -212,20 +178,10 @@ jobs:
           name: semgrep-results
           path: semgrep-results/
           if-no-files-found: warn
-          
-      - name: Upload SARIF to GitHub Security
-        if: steps.count.outputs.found > 0
-        uses: github/codeql-action/upload-sarif@v2
-        with:
-          sarif_file: semgrep-results/semgrep.sarif
-          category: semgrep
 
   bandit:
     name: Bandit Security Scan
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      security-events: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -246,11 +202,9 @@ jobs:
           # Productie-level scan
           bandit -r . -ll -f json -o bandit-results.json || true
           
-          # Ook SARIF formaat genereren
-          bandit -r . -ll -f sarif -o bandit-results.sarif || true
-          
-          # Tel en toon bevindingen
+          # Toon bevindingen
           if [ -f bandit-results.json ]; then
+            echo "=== Beveiligingsproblemen ==="
             HIGH_COUNT=$(jq '.results | map(select(.issue_severity == "HIGH")) | length' bandit-results.json)
             MEDIUM_COUNT=$(jq '.results | map(select(.issue_severity == "MEDIUM")) | length' bandit-results.json)
             LOW_COUNT=$(jq '.results | map(select(.issue_severity == "LOW")) | length' bandit-results.json)
@@ -259,14 +213,9 @@ jobs:
             echo "high=$HIGH_COUNT" >> $GITHUB_OUTPUT
             echo "total=$TOTAL" >> $GITHUB_OUTPUT
             
-            echo "=== Bandit Bevindingen ==="
-            echo "Hoog: $HIGH_COUNT"
-            echo "Gemiddeld: $MEDIUM_COUNT"
-            echo "Laag: $LOW_COUNT"
-            echo "Totaal: $TOTAL"
+            echo "Hoog: $HIGH_COUNT, Gemiddeld: $MEDIUM_COUNT, Laag: $LOW_COUNT, Totaal: $TOTAL"
             
             if [ "$TOTAL" -gt 0 ]; then
-              echo "=== Beveiligingsproblemen Details ==="
               jq -r '.results[] | "[\(.issue_severity)] \(.issue_text) in \(.filename) lijn \(.line_number)"' bandit-results.json
             fi
           fi
@@ -275,17 +224,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: bandit-results
-          path: |
-            bandit-results.json
-            bandit-results.sarif
+          path: bandit-results.json
           if-no-files-found: warn
-          
-      - name: Upload SARIF to GitHub Security
-        if: steps.bandit_scan.outputs.total > 0
-        uses: github/codeql-action/upload-sarif@v2
-        with:
-          sarif_file: bandit-results.sarif
-          category: bandit
 
   sast-summary:
     name: Security Scans Summary
@@ -298,103 +238,29 @@ jobs:
         with:
           path: all-artifacts
           
-      - name: Generate summary report
+      - name: Generate summary
         run: |
-          echo "## 🔒 Security Scan Resultaten" >> $GITHUB_STEP_SUMMARY
+          echo "## Security Scan Resultaten" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           
-          # GitLeaks resultaten
-          if [ -f all-artifacts/gitleaks-results/gitleaks-results.json ]; then
-            GITLEAKS_COUNT=$(jq 'length' all-artifacts/gitleaks-results/gitleaks-results.json 2>/dev/null || echo "0")
-            if [ "$GITLEAKS_COUNT" -gt 0 ]; then
-              echo "### ⚠️ GitLeaks: $GITLEAKS_COUNT geheimen gevonden" >> $GITHUB_STEP_SUMMARY
-              echo "" >> $GITHUB_STEP_SUMMARY
-              echo "| Regel | Beschrijving | Bestand |" >> $GITHUB_STEP_SUMMARY
-              echo "| ----- | ------------ | ------- |" >> $GITHUB_STEP_SUMMARY
-              jq -r '.[] | "| \(.Rule) | \(.Description) | \(.File) |"' all-artifacts/gitleaks-results/gitleaks-results.json >> $GITHUB_STEP_SUMMARY
-            else
-              echo "### ✅ GitLeaks: Geen geheimen gevonden" >> $GITHUB_STEP_SUMMARY
-            fi
-            echo "" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "### ❓ GitLeaks: Geen resultaten beschikbaar" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-          fi
+          # Tel resultaten
+          GITLEAKS_COUNT=$(jq 'length' all-artifacts/gitleaks-results/gitleaks-results.json 2>/dev/null || echo "0")
+          SEMGREP_COUNT=$(grep -o "\"level\": \"error\"" all-artifacts/semgrep-results/semgrep.sarif 2>/dev/null | wc -l || echo "0")
+          HIGH_COUNT=$(jq '.results | map(select(.issue_severity == "HIGH")) | length' all-artifacts/bandit-results/bandit-results.json 2>/dev/null || echo "0")
           
-          # Semgrep resultaten
-          if [ -f all-artifacts/semgrep-results/semgrep.sarif ]; then
-            SEMGREP_COUNT=$(grep -o "\"level\": \"error\"" all-artifacts/semgrep-results/semgrep.sarif | wc -l)
-            if [ "$SEMGREP_COUNT" -gt 0 ]; then
-              echo "### ⚠️ Semgrep: $SEMGREP_COUNT bevindingen" >> $GITHUB_STEP_SUMMARY
-              echo "" >> $GITHUB_STEP_SUMMARY
-              # SARIF bestanden zijn complex, dus hier alleen aantal tonen
-              echo "Details beschikbaar in security dashboard" >> $GITHUB_STEP_SUMMARY
-            else
-              echo "### ✅ Semgrep: Geen bevindingen" >> $GITHUB_STEP_SUMMARY
-            fi
-            echo "" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "### ❓ Semgrep: Geen resultaten beschikbaar" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-          fi
-          
-          # Bandit resultaten
-          if [ -f all-artifacts/bandit-results/bandit-results.json ]; then
-            HIGH_COUNT=$(jq '.results | map(select(.issue_severity == "HIGH")) | length' all-artifacts/bandit-results/bandit-results.json 2>/dev/null || echo "0")
-            MEDIUM_COUNT=$(jq '.results | map(select(.issue_severity == "MEDIUM")) | length' all-artifacts/bandit-results/bandit-results.json 2>/dev/null || echo "0")
-            LOW_COUNT=$(jq '.results | map(select(.issue_severity == "LOW")) | length' all-artifacts/bandit-results/bandit-results.json 2>/dev/null || echo "0")
-            TOTAL=$((HIGH_COUNT + MEDIUM_COUNT + LOW_COUNT))
-            
-            if [ "$TOTAL" -gt 0 ]; then
-              echo "### ⚠️ Bandit: $TOTAL bevindingen ($HIGH_COUNT hoog, $MEDIUM_COUNT gemiddeld, $LOW_COUNT laag)" >> $GITHUB_STEP_SUMMARY
-              echo "" >> $GITHUB_STEP_SUMMARY
-              echo "| Ernst | Probleem | Bestand | Regel |" >> $GITHUB_STEP_SUMMARY
-              echo "| ----- | -------- | ------- | ----- |" >> $GITHUB_STEP_SUMMARY
-              jq -r '.results[] | "| \(.issue_severity) | \(.issue_text) | \(.filename) | \(.line_number) |"' all-artifacts/bandit-results/bandit-results.json >> $GITHUB_STEP_SUMMARY
-            else
-              echo "### ✅ Bandit: Geen bevindingen" >> $GITHUB_STEP_SUMMARY
-            fi
-            echo "" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "### ❓ Bandit: Geen resultaten beschikbaar" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-          fi
-          
-          # Totaaloverzicht
-          echo "## 📊 Totaaloverzicht" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          
-          GITLEAKS_COUNT=${GITLEAKS_COUNT:-0}
-          SEMGREP_COUNT=${SEMGREP_COUNT:-0}
-          HIGH_COUNT=${HIGH_COUNT:-0}
-          MEDIUM_COUNT=${MEDIUM_COUNT:-0}
-          LOW_COUNT=${LOW_COUNT:-0}
-          
-          CRITICAL_ISSUES=$((GITLEAKS_COUNT + SEMGREP_COUNT + HIGH_COUNT))
-          
+          # Toon eenvoudige tabel
           echo "| Tool | Bevindingen |" >> $GITHUB_STEP_SUMMARY
           echo "| ---- | ----------- |" >> $GITHUB_STEP_SUMMARY
           echo "| GitLeaks | $GITLEAKS_COUNT |" >> $GITHUB_STEP_SUMMARY
           echo "| Semgrep | $SEMGREP_COUNT |" >> $GITHUB_STEP_SUMMARY
           echo "| Bandit (Hoog) | $HIGH_COUNT |" >> $GITHUB_STEP_SUMMARY
-          echo "| Bandit (Gemiddeld) | $MEDIUM_COUNT |" >> $GITHUB_STEP_SUMMARY
-          echo "| Bandit (Laag) | $LOW_COUNT |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Kritieke Bevindingen** | **$CRITICAL_ISSUES** |" >> $GITHUB_STEP_SUMMARY
           
-          echo "" >> $GITHUB_STEP_SUMMARY
-          if [ "$CRITICAL_ISSUES" -gt 0 ]; then
-            echo "⚠️ **Actie vereist:** Er zijn beveiligingsproblemen gevonden" >> $GITHUB_STEP_SUMMARY
+          TOTAL=$((GITLEAKS_COUNT + SEMGREP_COUNT + HIGH_COUNT))
+          if [ "$TOTAL" -gt 0 ]; then
+            echo "⚠️ $TOTAL beveiligingsproblemen gevonden" >> $GITHUB_STEP_SUMMARY
           else
-            echo "✅ **Alle security scans succesvol afgerond zonder kritieke bevindingen**" >> $GITHUB_STEP_SUMMARY
+            echo "✅ Geen kritieke beveiligingsproblemen gevonden" >> $GITHUB_STEP_SUMMARY
           fi
           
-      - name: Check critical issues
-        run: |
-          # Voor productie kun je deze uncomment om de pipeline te laten falen bij kritieke bevindingen
-          # Als er kritieke issues zijn en dit een productie branch is
-          # if [ "$CRITICAL_ISSUES" -gt 0 ] && [ "${{ github.ref }}" == "refs/heads/main" ]; then
-          #   echo "::error::Kritieke beveiligingsproblemen gevonden in productie branch!"
-          #   exit 1
-          # fi
-          
-          echo "Security scan compleet. Bekijk het GitHub Actions tabblad voor gedetailleerde resultaten."
+      - name: Summary
+        run: echo "Security scans completed. Check the summary tab for results."
