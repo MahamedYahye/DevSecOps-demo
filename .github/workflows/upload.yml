@@ -1,170 +1,95 @@
-name: Upload Security Results
+name: Upload Semgrep to DefectDojo
 on:
   workflow_run:
-    workflows: ["Modular SAST Workflow", "Build, Scan and Push"]
+    workflows: ["Modular SAST Workflow"]
     types:
       - completed
 
 jobs:
-  upload_security_results:
-    name: Upload to DefectDojo & Dependency-Track
+  upload_semgrep:
+    name: Upload Semgrep to DefectDojo
     runs-on: ubuntu-latest
-    if: always()
     steps:
-      - name: Download SAST artifacts
-        uses: dawidd6/action-download-artifact@v2
+      # Download alleen het semgrep artifact
+      - name: Download Semgrep artifact
+        uses: actions/download-artifact@v4
         with:
-          workflow: Modular SAST Workflow
-          name: "*"  # Download alle artifacts van deze workflow
-          path: sast-results
+          name: semgrep-results
+          path: semgrep
         continue-on-error: true
-      
-      - name: Download Docker scan artifacts
-        uses: dawidd6/action-download-artifact@v2
-        with:
-          workflow: Build, Scan and Push
-          name: "*"  # Download alle artifacts van deze workflow
-          path: docker-results
-        continue-on-error: true
-      
-      - name: Debug artifacts
+
+      # Debug de inhoud van het gedownloade artifact
+      - name: List Semgrep artifacts
         run: |
-          echo "Listing downloaded artifacts:"
-          echo "SAST artifacts:"
-          ls -la sast-results || echo "No SAST artifacts directory found"
-          [ -d "sast-results" ] && find sast-results -type f | sort
-          
-          echo "Docker artifacts:"
-          ls -la docker-results || echo "No Docker artifacts directory found"
-          [ -d "docker-results" ] && find docker-results -type f | sort
-      
-      # DefectDojo uploads - SAST resultaten
-      - name: Upload GitLeaks results to DefectDojo
-        if: hashFiles('sast-results/gitleaks-results/gitleaks-results.json') != ''
-        env:
-          DEFECTDOJO_URL: ${{ secrets.DEFECTDOJO_URL }}
-          DEFECTDOJO_API_KEY: ${{ secrets.DEFECTDOJO_API_KEY }}
-          ENGAGEMENT_ID: ${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}
+          echo "=== Semgrep Artifact Content ==="
+          ls -la semgrep || echo "No semgrep directory found"
+          find semgrep -type f | sort || echo "No files found in semgrep directory"
+
+      # Valideer het Semgrep resultaat
+      - name: Validate Semgrep Result
+        id: validate
         run: |
-          GITLEAKS_FILE="sast-results/gitleaks-results/gitleaks-results.json"
+          SEMGREP_FILE=""
           
-          if [ -f "$GITLEAKS_FILE" ]; then
-            echo "Uploading $GITLEAKS_FILE to DefectDojo"
-            
-            curl -X POST "$DEFECTDOJO_URL/api/v2/import-scan/" \
-              -H "Authorization: Token $DEFECTDOJO_API_KEY" \
-              -F "scan_type=GitLeaks Scan" \
-              -F "file=@$GITLEAKS_FILE" \
-              -F "engagement=$ENGAGEMENT_ID" \
-              -F "close_old_findings=true" \
-              -F "scan_date=$(date +'%Y-%m-%d')"
-              
-            echo "✅ GitLeaks results successfully uploaded to DefectDojo"
+          if [ -f semgrep/results.json ]; then
+            echo "✅ Found Semgrep results.json file"
+            SEMGREP_FILE="semgrep/results.json"
+          elif [ -f semgrep/semgrep-results.json ]; then
+            echo "✅ Found Semgrep semgrep-results.json file"
+            SEMGREP_FILE="semgrep/semgrep-results.json"
           else
-            echo "⚠️ No GitLeaks results found to upload"
-          fi
-      
-      - name: Upload Semgrep results to DefectDojo
-        if: hashFiles('sast-results/semgrep-results/results.json') != ''
-        env:
-          DEFECTDOJO_URL: ${{ secrets.DEFECTDOJO_URL }}
-          DEFECTDOJO_API_KEY: ${{ secrets.DEFECTDOJO_API_KEY }}
-          ENGAGEMENT_ID: ${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}
-        run: |
-          SEMGREP_FILE="sast-results/semgrep-results/results.json"
-          
-          if [ -f "$SEMGREP_FILE" ]; then
-            echo "Uploading $SEMGREP_FILE to DefectDojo"
-            
-            curl -X POST "$DEFECTDOJO_URL/api/v2/import-scan/" \
-              -H "Authorization: Token $DEFECTDOJO_API_KEY" \
-              -F "scan_type=Semgrep JSON Report" \
-              -F "file=@$SEMGREP_FILE" \
-              -F "engagement=$ENGAGEMENT_ID" \
-              -F "close_old_findings=true" \
-              -F "scan_date=$(date +'%Y-%m-%d')"
-              
-            echo "✅ Semgrep results successfully uploaded to DefectDojo"
-          else
-            echo "⚠️ No Semgrep results found to upload"
-          fi
-      
-      - name: Upload Bandit results to DefectDojo
-        if: hashFiles('sast-results/bandit-results/results.json') != ''
-        env:
-          DEFECTDOJO_URL: ${{ secrets.DEFECTDOJO_URL }}
-          DEFECTDOJO_API_KEY: ${{ secrets.DEFECTDOJO_API_KEY }}
-          ENGAGEMENT_ID: ${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}
-        run: |
-          BANDIT_FILE="sast-results/bandit-results/results.json"
-          
-          if [ -f "$BANDIT_FILE" ]; then
-            echo "Uploading $BANDIT_FILE to DefectDojo"
-            
-            curl -X POST "$DEFECTDOJO_URL/api/v2/import-scan/" \
-              -H "Authorization: Token $DEFECTDOJO_API_KEY" \
-              -F "scan_type=Bandit Scan" \
-              -F "file=@$BANDIT_FILE" \
-              -F "engagement=$ENGAGEMENT_ID" \
-              -F "close_old_findings=true" \
-              -F "scan_date=$(date +'%Y-%m-%d')"
-              
-            echo "✅ Bandit results successfully uploaded to DefectDojo"
-          else
-            echo "⚠️ No Bandit results found to upload"
-          fi
-      
-      # DefectDojo uploads - Docker scan resultaten met Grype
-      - name: Upload Grype vulnerability results to DefectDojo
-        if: hashFiles('docker-results/scan-results*/grype-vulnerabilities.json') != ''
-        env:
-          DEFECTDOJO_URL: ${{ secrets.DEFECTDOJO_URL }}
-          DEFECTDOJO_API_KEY: ${{ secrets.DEFECTDOJO_API_KEY }}
-          ENGAGEMENT_ID: ${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}
-        run: |
-          GRYPE_FILE=$(find docker-results -name "grype-vulnerabilities.json" | head -1)
-          
-          if [ -n "$GRYPE_FILE" ]; then
-            echo "Uploading $GRYPE_FILE to DefectDojo"
-            
-            curl -X POST "$DEFECTDOJO_URL/api/v2/import-scan/" \
-              -H "Authorization: Token $DEFECTDOJO_API_KEY" \
-              -F "scan_type=Anchore Grype" \
-              -F "file=@$GRYPE_FILE" \
-              -F "engagement=$ENGAGEMENT_ID" \
-              -F "close_old_findings=true" \
-              -F "scan_date=$(date +'%Y-%m-%d')"
-              
-            echo "✅ Grype vulnerability results successfully uploaded to DefectDojo"
-          else
-            echo "⚠️ No Grype vulnerability results found to upload"
-          fi
-      
-      # Dependency-Track upload - SBOM
-      - name: Upload SBOM to Dependency-Track
-        if: hashFiles('docker-results/scan-results*/sbom.cyclonedx.json') != ''
-        env:
-          DT_URL: ${{ secrets.DEPENDENCYTRACK_URL }}
-          DT_API_KEY: ${{ secrets.DEPENDENCYTRACK_API_KEY }}
-          PROJECT_UUID: ${{ secrets.DEPENDENCYTRACK_PROJECT_UUID }}
-        run: |
-          SBOM_FILE=$(find docker-results -name "sbom.cyclonedx.json" | head -1)
-          
-          if [ -n "$SBOM_FILE" ]; then
-            echo "Uploading $SBOM_FILE to Dependency-Track"
-            
-            # SBOM uploaden naar bestaand project UUID
-            SBOM_BASE64=$(base64 -w 0 $SBOM_FILE)
-            RESPONSE=$(curl -s -X POST "$DT_URL/api/v1/bom" \
-              -H "X-API-Key: $DT_API_KEY" \
-              -H "Content-Type: application/json" \
-              -d "{\"project\":\"$PROJECT_UUID\", \"bom\":\"$SBOM_BASE64\"}")
-              
-            if [[ "$RESPONSE" == *"Processing of the BOM will occur asynchronously"* ]]; then
-              echo "✅ Successfully uploaded SBOM to Dependency-Track"
+            # Zoek dieper in de map structuur
+            FOUND_FILE=$(find semgrep -name "*.json" | head -1)
+            if [ -n "$FOUND_FILE" ]; then
+              echo "✅ Found Semgrep results at: $FOUND_FILE"
+              SEMGREP_FILE="$FOUND_FILE"
             else
-              echo "⚠️ Upload to Dependency-Track may have issues: $RESPONSE"
+              echo "❌ No Semgrep results found"
             fi
+          fi
+          
+          if [ -n "$SEMGREP_FILE" ]; then
+            echo "semgrep_file=$SEMGREP_FILE" >> $GITHUB_OUTPUT
+            echo "semgrep_found=true" >> $GITHUB_OUTPUT
           else
-            echo "⚠️ No SBOM file found to upload"
+            echo "semgrep_found=false" >> $GITHUB_OUTPUT
+          fi
+
+      # Upload naar DefectDojo
+      - name: Upload Semgrep to DefectDojo
+        if: steps.validate.outputs.semgrep_found == 'true'
+        env:
+          DEFECTDOJO_URL: ${{ secrets.DEFECTDOJO_URL }}
+          DEFECTDOJO_API_KEY: ${{ secrets.DEFECTDOJO_API_KEY }}
+          DEFECTDOJO_ENGAGEMENT_ID: ${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}
+        run: |
+          SCAN_DATE=$(date +%Y-%m-%d)
+          SEMGREP_FILE="${{ steps.validate.outputs.semgrep_file }}"
+          
+          echo "⌛ Uploading Semgrep scan from $SEMGREP_FILE"
+          
+          # Toon bestandsgrootte en eerste 10 regels om te helpen met debuggen
+          echo "File size: $(wc -c < $SEMGREP_FILE) bytes"
+          echo "First 10 lines of the file:"
+          head -n 10 $SEMGREP_FILE
+          
+          HTTP_CODE=$(curl -s -o response.txt -w "%{http_code}" \
+            -X POST "$DEFECTDOJO_URL/api/v2/import-scan/" \
+            -H "Authorization: Token $DEFECTDOJO_API_KEY" \
+            -F "scan_date=$SCAN_DATE" \
+            -F "scan_type=Semgrep JSON Report" \
+            -F "close_old_findings=true" \
+            -F "deduplication_on_engagement=true" \
+            -F "engagement=$DEFECTDOJO_ENGAGEMENT_ID" \
+            -F "file=@$SEMGREP_FILE")
+          
+          if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
+            echo "✅ Successfully uploaded Semgrep scan"
+            echo "Response:"
+            cat response.txt
+          else
+            echo "❌ Upload failed with HTTP code $HTTP_CODE"
+            echo "Error response:"
+            cat response.txt
+            exit 1
           fi
