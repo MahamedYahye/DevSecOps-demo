@@ -10,67 +10,39 @@ jobs:
     name: Upload Semgrep to DefectDojo
     runs-on: ubuntu-latest
     steps:
-      # Download alleen het semgrep artifact
+      # Download het Semgrep artifact
       - name: Download Semgrep artifact
         uses: actions/download-artifact@v4
         with:
           name: semgrep-results
-          path: semgrep
+          path: semgrep-results
         continue-on-error: true
 
-      # Debug de inhoud van het gedownloade artifact
-      - name: List Semgrep artifacts
+      # Debug de inhoud
+      - name: List artifact contents
         run: |
-          echo "=== Semgrep Artifact Content ==="
-          ls -la semgrep || echo "No semgrep directory found"
-          find semgrep -type f | sort || echo "No files found in semgrep directory"
-
-      # Valideer het Semgrep resultaat
-      - name: Validate Semgrep Result
-        id: validate
-        run: |
-          SEMGREP_FILE=""
-          
-          if [ -f semgrep/results.json ]; then
-            echo "✅ Found Semgrep results.json file"
-            SEMGREP_FILE="semgrep/results.json"
-          elif [ -f semgrep/semgrep-results.json ]; then
-            echo "✅ Found Semgrep semgrep-results.json file"
-            SEMGREP_FILE="semgrep/semgrep-results.json"
-          else
-            # Zoek dieper in de map structuur
-            FOUND_FILE=$(find semgrep -name "*.json" | head -1)
-            if [ -n "$FOUND_FILE" ]; then
-              echo "✅ Found Semgrep results at: $FOUND_FILE"
-              SEMGREP_FILE="$FOUND_FILE"
-            else
-              echo "❌ No Semgrep results found"
-            fi
-          fi
-          
-          if [ -n "$SEMGREP_FILE" ]; then
-            echo "semgrep_file=$SEMGREP_FILE" >> $GITHUB_OUTPUT
-            echo "semgrep_found=true" >> $GITHUB_OUTPUT
-          else
-            echo "semgrep_found=false" >> $GITHUB_OUTPUT
-          fi
+          echo "=== Downloaded Artifacts ==="
+          ls -la
+          echo "=== Semgrep Results Directory ==="
+          ls -la semgrep-results || echo "No semgrep-results directory found"
+          find . -type f -name "*.json" | sort
 
       # Upload naar DefectDojo
       - name: Upload Semgrep to DefectDojo
-        if: steps.validate.outputs.semgrep_found == 'true'
+        if: hashFiles('semgrep-results/results.json') != ''
         env:
           DEFECTDOJO_URL: ${{ secrets.DEFECTDOJO_URL }}
           DEFECTDOJO_API_KEY: ${{ secrets.DEFECTDOJO_API_KEY }}
           DEFECTDOJO_ENGAGEMENT_ID: ${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}
         run: |
           SCAN_DATE=$(date +%Y-%m-%d)
-          SEMGREP_FILE="${{ steps.validate.outputs.semgrep_file }}"
+          SEMGREP_FILE="semgrep-results/results.json"
           
           echo "⌛ Uploading Semgrep scan from $SEMGREP_FILE"
           
-          # Toon bestandsgrootte en eerste 10 regels om te helpen met debuggen
+          # Toon bestandsgrootte en eerste regels
           echo "File size: $(wc -c < $SEMGREP_FILE) bytes"
-          echo "First 10 lines of the file:"
+          echo "First 10 lines:"
           head -n 10 $SEMGREP_FILE
           
           HTTP_CODE=$(curl -s -o response.txt -w "%{http_code}" \
