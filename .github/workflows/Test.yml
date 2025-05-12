@@ -1,254 +1,170 @@
-# # name: Modular SAST Workflow
-
-# # on:
-# #   push:
-# #     branches: [ main ]
-# #   pull_request:
-# #     branches: [ main ]
-
-# # jobs:
-
-# #   gitleaks:
-# #     name: GitLeaks Security Scan
-# #     runs-on: ubuntu-latest
-# #     steps:
-# #     - name: Checkout code with full history
-# #       uses: actions/checkout@v4
-# #       with:
-# #         fetch-depth: 0
-        
-# #     - name: Install latest GitLeaks version
-# #       run: |
-# #         wget https://github.com/zricethezav/gitleaks/releases/download/v8.18.1/gitleaks_8.18.1_linux_x64.tar.gz
-# #         tar -xzf gitleaks_8.18.1_linux_x64.tar.gz
-# #         chmod +x gitleaks
-# #         sudo mv gitleaks /usr/local/bin/
-        
-# #     - name: Run GitLeaks scan
-# #       continue-on-error: true  # Voor ontwikkelingsfase, verwijder voor productie
-# #       run: |
-# #         # Scan en sla resultaten op
-# #         gitleaks detect --source=. --verbose --redact --report-format=json --report-path=gitleaks-results.json
-        
-# #         # Toon bevindingen
-# #         echo "=== GitLeaks Resultaten ==="
-# #         if [ -f gitleaks-results.json ]; then
-# #           FOUND=$(jq 'length' gitleaks-results.json)
-# #           if [ "$FOUND" -gt 0 ]; then
-# #             echo "⚠️ GitLeaks heeft $FOUND potentiële geheimen gevonden"
-# #             jq -r '.[] | "- \(.Rule): \(.Description) in \(.File)"' gitleaks-results.json
-# #           else
-# #             echo "✅ Geen geheimen gevonden"
-# #           fi
-# #         fi
-        
-# #     - name: Upload GitLeaks Results
-# #       uses: actions/upload-artifact@v4
-# #       with:
-# #         name: gitleaks-results
-# #         path: gitleaks-results.json
-# #         if-no-files-found: warn
-
-# #   semgrep:
-# #     name: Semgrep Scan
-# #     runs-on: ubuntu-latest
-# #     steps:
-# #       - name: Checkout code
-# #         uses: actions/checkout@v4
-
-# #       - name: Run Semgrep
-# #         uses: returntocorp/semgrep-action@v1
-# #         with:
-# #           config: auto
-# #         continue-on-error: true
-
-# #   bandit:
-# #     name: Bandit Security Scan
-# #     runs-on: ubuntu-latest
-# #     steps:
-# #     - name: Checkout code
-# #       uses: actions/checkout@v4
-      
-# #     - name: Set up Python
-# #       uses: actions/setup-python@v5
-# #       with:
-# #         python-version: '3.11'
-        
-# #     - name: Install Bandit
-# #       run: |
-# #         python -m pip install bandit
-        
-# #     - name: Run Bandit
-  
-# #       continue-on-error: true
-# #       run: |
-# #         # Eenvoudige productie-level scan
-# #         bandit -r . -ll -f json -o bandit-results.json || true
-        
-# #         # Toon bevindingen
-# #         if [ -f bandit-results.json ]; then
-# #           echo "=== Beveiligingsproblemen ==="
-# #           jq -r '.results[] | "[\(.issue_severity)] \(.issue_text) in \(.filename) lijn \(.line_number)"' bandit-results.json
-# #         fi
-        
-# #     - name: Upload Bandit Results
-# #       uses: actions/upload-artifact@v4
-# #       with:
-# #         name: bandit-results
-# #         path: bandit-results.json
-# #         if-no-files-found: warn
-
-
-# #   sast-scans:
-# #     name: Run All Scans
-# #     runs-on: ubuntu-latest
-# #     needs: [gitleaks, semgrep, bandit]
-# #     steps:
-# #       - name: Summary
-# #         run: echo "All SAST scans completed successfully."
-name: Modular SAST Workflow
+name: Upload Security Results
 on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+  workflow_run:
+    workflows: ["Modular SAST Workflow", "Build, Scan and Push"]
+    types:
+      - completed
 
 jobs:
-  gitleaks:
-    name: GitLeaks Security Scan
+  upload_security_results:
+    name: Upload to DefectDojo & Dependency-Track
     runs-on: ubuntu-latest
+    if: always()
     steps:
-      - name: Checkout code with full history
-        uses: actions/checkout@v4
+      - name: Download SAST artifacts
+        uses: dawidd6/action-download-artifact@v2
         with:
-          fetch-depth: 0
-          
-      - name: Install GitLeaks
-        run: |
-          wget https://github.com/zricethezav/gitleaks/releases/download/v8.18.1/gitleaks_8.18.1_linux_x64.tar.gz
-          tar -xzf gitleaks_8.18.1_linux_x64.tar.gz
-          chmod +x gitleaks
-          sudo mv gitleaks /usr/local/bin/
-          
-      - name: Run GitLeaks scan
-        id: gitleaks_scan
+          workflow: Modular SAST Workflow
+          name: "*"  # Download alle artifacts van deze workflow
+          path: sast-results
         continue-on-error: true
-        run: |
-          # Scan en sla resultaten op
-          gitleaks detect --source=. --verbose --redact --report-format=json --report-path=gitleaks-results.json
-          
-          # Toon bevindingen
-          echo "=== GitLeaks Resultaten ==="
-          if [ -f gitleaks-results.json ]; then
-            FOUND=$(jq 'length' gitleaks-results.json)
-            
-            if [ "$FOUND" -gt 0 ]; then
-              echo "⚠️ GitLeaks heeft $FOUND potentiële geheimen gevonden"
-              jq -r '.[] | "- \(.Rule): \(.Description) in \(.File)"' gitleaks-results.json
-            else
-              echo "✅ Geen geheimen gevonden"
-            fi
-          fi
-          
-      - name: Upload GitLeaks Results
-        uses: actions/upload-artifact@v4
-        with:
-          name: gitleaks-results
-          path: gitleaks-results.json
-          if-no-files-found: warn
-
-  semgrep:
-    name: Semgrep Scan
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
       
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Download Docker scan artifacts
+        uses: dawidd6/action-download-artifact@v2
         with:
-          python-version: '3.11'
-        
-      - name: Install Semgrep
-        run: |
-          python -m pip install semgrep
-        
-      - name: Run Semgrep scan
-        id: semgrep_scan
+          workflow: Build, Scan and Push
+          name: "*"  # Download alle artifacts van deze workflow
+          path: docker-results
         continue-on-error: true
+      
+      - name: Debug artifacts
         run: |
-          # Maak results directory
-          mkdir -p semgrep-results
+          echo "Listing downloaded artifacts:"
+          echo "SAST artifacts:"
+          ls -la sast-results || echo "No SAST artifacts directory found"
+          [ -d "sast-results" ] && find sast-results -type f | sort
           
-          # Voer Semgrep uit
-          semgrep --config p/default --json --output semgrep-results/results.json .
+          echo "Docker artifacts:"
+          ls -la docker-results || echo "No Docker artifacts directory found"
+          [ -d "docker-results" ] && find docker-results -type f | sort
+      
+      # DefectDojo uploads - SAST resultaten
+      - name: Upload GitLeaks results to DefectDojo
+        if: hashFiles('sast-results/gitleaks-results/gitleaks-results.json') != ''
+        env:
+          DEFECTDOJO_URL: ${{ secrets.DEFECTDOJO_URL }}
+          DEFECTDOJO_API_KEY: ${{ secrets.DEFECTDOJO_API_KEY }}
+          ENGAGEMENT_ID: ${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}
+        run: |
+          GITLEAKS_FILE="sast-results/gitleaks-results/gitleaks-results.json"
           
-          # Toon bevindingen
-          echo "=== Semgrep Resultaten ==="
-          if [ -f semgrep-results/results.json ]; then
-            FINDINGS=$(jq '.results | length' semgrep-results/results.json)
+          if [ -f "$GITLEAKS_FILE" ]; then
+            echo "Uploading $GITLEAKS_FILE to DefectDojo"
             
-            if [ "$FINDINGS" -gt 0 ]; then
-              echo "⚠️ Semgrep heeft $FINDINGS bevindingen gedetecteerd"
-              jq -r '.results[] | "- \(.check_id): \(.extra.message) in \(.path):\(.start.line)"' semgrep-results/results.json
+            curl -X POST "$DEFECTDOJO_URL/api/v2/import-scan/" \
+              -H "Authorization: Token $DEFECTDOJO_API_KEY" \
+              -F "scan_type=GitLeaks Scan" \
+              -F "file=@$GITLEAKS_FILE" \
+              -F "engagement=$ENGAGEMENT_ID" \
+              -F "close_old_findings=true" \
+              -F "scan_date=$(date +'%Y-%m-%d')"
+              
+            echo "✅ GitLeaks results successfully uploaded to DefectDojo"
+          else
+            echo "⚠️ No GitLeaks results found to upload"
+          fi
+      
+      - name: Upload Semgrep results to DefectDojo
+        if: hashFiles('sast-results/semgrep-results/results.json') != ''
+        env:
+          DEFECTDOJO_URL: ${{ secrets.DEFECTDOJO_URL }}
+          DEFECTDOJO_API_KEY: ${{ secrets.DEFECTDOJO_API_KEY }}
+          ENGAGEMENT_ID: ${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}
+        run: |
+          SEMGREP_FILE="sast-results/semgrep-results/results.json"
+          
+          if [ -f "$SEMGREP_FILE" ]; then
+            echo "Uploading $SEMGREP_FILE to DefectDojo"
+            
+            curl -X POST "$DEFECTDOJO_URL/api/v2/import-scan/" \
+              -H "Authorization: Token $DEFECTDOJO_API_KEY" \
+              -F "scan_type=Semgrep JSON Report" \
+              -F "file=@$SEMGREP_FILE" \
+              -F "engagement=$ENGAGEMENT_ID" \
+              -F "close_old_findings=true" \
+              -F "scan_date=$(date +'%Y-%m-%d')"
+              
+            echo "✅ Semgrep results successfully uploaded to DefectDojo"
+          else
+            echo "⚠️ No Semgrep results found to upload"
+          fi
+      
+      - name: Upload Bandit results to DefectDojo
+        if: hashFiles('sast-results/bandit-results/results.json') != ''
+        env:
+          DEFECTDOJO_URL: ${{ secrets.DEFECTDOJO_URL }}
+          DEFECTDOJO_API_KEY: ${{ secrets.DEFECTDOJO_API_KEY }}
+          ENGAGEMENT_ID: ${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}
+        run: |
+          BANDIT_FILE="sast-results/bandit-results/results.json"
+          
+          if [ -f "$BANDIT_FILE" ]; then
+            echo "Uploading $BANDIT_FILE to DefectDojo"
+            
+            curl -X POST "$DEFECTDOJO_URL/api/v2/import-scan/" \
+              -H "Authorization: Token $DEFECTDOJO_API_KEY" \
+              -F "scan_type=Bandit Scan" \
+              -F "file=@$BANDIT_FILE" \
+              -F "engagement=$ENGAGEMENT_ID" \
+              -F "close_old_findings=true" \
+              -F "scan_date=$(date +'%Y-%m-%d')"
+              
+            echo "✅ Bandit results successfully uploaded to DefectDojo"
+          else
+            echo "⚠️ No Bandit results found to upload"
+          fi
+      
+      # DefectDojo uploads - Docker scan resultaten met Grype
+      - name: Upload Grype vulnerability results to DefectDojo
+        if: hashFiles('docker-results/scan-results*/grype-vulnerabilities.json') != ''
+        env:
+          DEFECTDOJO_URL: ${{ secrets.DEFECTDOJO_URL }}
+          DEFECTDOJO_API_KEY: ${{ secrets.DEFECTDOJO_API_KEY }}
+          ENGAGEMENT_ID: ${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}
+        run: |
+          GRYPE_FILE=$(find docker-results -name "grype-vulnerabilities.json" | head -1)
+          
+          if [ -n "$GRYPE_FILE" ]; then
+            echo "Uploading $GRYPE_FILE to DefectDojo"
+            
+            curl -X POST "$DEFECTDOJO_URL/api/v2/import-scan/" \
+              -H "Authorization: Token $DEFECTDOJO_API_KEY" \
+              -F "scan_type=Anchore Grype" \
+              -F "file=@$GRYPE_FILE" \
+              -F "engagement=$ENGAGEMENT_ID" \
+              -F "close_old_findings=true" \
+              -F "scan_date=$(date +'%Y-%m-%d')"
+              
+            echo "✅ Grype vulnerability results successfully uploaded to DefectDojo"
+          else
+            echo "⚠️ No Grype vulnerability results found to upload"
+          fi
+      
+      # Dependency-Track upload - SBOM
+      - name: Upload SBOM to Dependency-Track
+        if: hashFiles('docker-results/scan-results*/sbom.cyclonedx.json') != ''
+        env:
+          DT_URL: ${{ secrets.DEPENDENCYTRACK_URL }}
+          DT_API_KEY: ${{ secrets.DEPENDENCYTRACK_API_KEY }}
+          PROJECT_UUID: ${{ secrets.DEPENDENCYTRACK_PROJECT_UUID }}
+        run: |
+          SBOM_FILE=$(find docker-results -name "sbom.cyclonedx.json" | head -1)
+          
+          if [ -n "$SBOM_FILE" ]; then
+            echo "Uploading $SBOM_FILE to Dependency-Track"
+            
+            # SBOM uploaden naar bestaand project UUID
+            SBOM_BASE64=$(base64 -w 0 $SBOM_FILE)
+            RESPONSE=$(curl -s -X POST "$DT_URL/api/v1/bom" \
+              -H "X-API-Key: $DT_API_KEY" \
+              -H "Content-Type: application/json" \
+              -d "{\"project\":\"$PROJECT_UUID\", \"bom\":\"$SBOM_BASE64\"}")
+              
+            if [[ "$RESPONSE" == *"Processing of the BOM will occur asynchronously"* ]]; then
+              echo "✅ Successfully uploaded SBOM to Dependency-Track"
             else
-              echo "✅ Geen bevindingen gedetecteerd"
+              echo "⚠️ Upload to Dependency-Track may have issues: $RESPONSE"
             fi
           else
-            echo "Geen Semgrep resultaten gevonden"
+            echo "⚠️ No SBOM file found to upload"
           fi
-          
-      - name: Upload Semgrep Results
-        uses: actions/upload-artifact@v4
-        with:
-          name: semgrep-results
-          path: semgrep-results/
-          if-no-files-found: warn
-
-  bandit:
-    name: Bandit Security Scan
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-          
-      - name: Install Bandit
-        run: |
-          python -m pip install bandit
-          
-      - name: Run Bandit
-        id: bandit_scan
-        continue-on-error: true
-        run: |
-          # Maak results directory
-          mkdir -p bandit-results
-          
-          # Productie-level scan
-          bandit -r . -ll -f json -o bandit-results/results.json || true
-          
-          # Toon bevindingen
-          if [ -f bandit-results/results.json ]; then
-            echo "=== Beveiligingsproblemen ==="
-            HIGH_COUNT=$(jq '.results | map(select(.issue_severity == "HIGH")) | length' bandit-results/results.json)
-            MEDIUM_COUNT=$(jq '.results | map(select(.issue_severity == "MEDIUM")) | length' bandit-results/results.json)
-            LOW_COUNT=$(jq '.results | map(select(.issue_severity == "LOW")) | length' bandit-results/results.json)
-            TOTAL=$((HIGH_COUNT + MEDIUM_COUNT + LOW_COUNT))
-            
-            echo "Hoog: $HIGH_COUNT, Gemiddeld: $MEDIUM_COUNT, Laag: $LOW_COUNT, Totaal: $TOTAL"
-            
-            if [ "$TOTAL" -gt 0 ]; then
-              jq -r '.results[] | "[\(.issue_severity)] \(.issue_text) in \(.filename) lijn \(.line_number)"' bandit-results/results.json
-            fi
-          fi
-          
-      - name: Upload Bandit Results
-        uses: actions/upload-artifact@v4
-        with:
-          name: bandit-results
-          path: bandit-results/
-          if-no-files-found: warn
