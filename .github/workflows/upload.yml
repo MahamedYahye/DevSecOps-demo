@@ -4,7 +4,6 @@ on:
     workflows: ["Modular SAST Workflow", "Build, Scan and Push"]
     types:
       - completed
-      
 
 jobs:
   upload_security_results:
@@ -12,39 +11,44 @@ jobs:
     runs-on: ubuntu-latest
     if: always()
     steps:
-      - name: Download artifacts
-        uses: actions/download-artifact@v4
+      - name: Download SAST artifacts
+        uses: dawidd6/action-download-artifact@v2
         with:
-          name: '*'
-          path: artifacts
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          run-id: ${{ github.event.workflow_run.id }}
+          workflow: Modular SAST Workflow
+          name: "*"  # Download alle artifacts van deze workflow
+          path: sast-results
         continue-on-error: true
       
-      - name: Organize artifacts
+      - name: Download Docker scan artifacts
+        uses: dawidd6/action-download-artifact@v2
+        with:
+          workflow: Build, Scan and Push
+          name: "*"  # Download alle artifacts van deze workflow
+          path: docker-results
+        continue-on-error: true
+      
+      - name: Debug artifacts
         run: |
-          mkdir -p sast-results docker-results
+          echo "Listing downloaded artifacts:"
+          echo "SAST artifacts:"
+          ls -la sast-results || echo "No SAST artifacts directory found"
+          [ -d "sast-results" ] && find sast-results -type f | sort
           
-          find artifacts -name "gitleaks-results*" -type d -exec cp -r {} sast-results/ \;
-          find artifacts -name "semgrep-results*" -type d -exec cp -r {} sast-results/ \;
-          find artifacts -name "bandit-results*" -type d -exec cp -r {} sast-results/ \;
-          find artifacts -name "scan-results*" -type d -exec cp -r {} docker-results/ \;
-          
-          echo "=== Artifacts Structure ==="
-          find sast-results -type f | sort || echo "No SAST results found"
-          find docker-results -type f | sort || echo "No Docker results found"
+          echo "Docker artifacts:"
+          ls -la docker-results || echo "No Docker artifacts directory found"
+          [ -d "docker-results" ] && find docker-results -type f | sort
       
       # DefectDojo uploads - SAST resultaten
       - name: Upload GitLeaks results to DefectDojo
-        if: hashFiles('sast-results/gitleaks-results*/gitleaks-results.json') != ''
+        if: hashFiles('sast-results/gitleaks-results/gitleaks-results.json') != ''
         env:
           DEFECTDOJO_URL: ${{ secrets.DEFECTDOJO_URL }}
           DEFECTDOJO_API_KEY: ${{ secrets.DEFECTDOJO_API_KEY }}
           ENGAGEMENT_ID: ${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}
         run: |
-          GITLEAKS_FILE=$(find sast-results -name "gitleaks-results.json" | head -1)
+          GITLEAKS_FILE="sast-results/gitleaks-results/gitleaks-results.json"
           
-          if [ -n "$GITLEAKS_FILE" ]; then
+          if [ -f "$GITLEAKS_FILE" ]; then
             echo "Uploading $GITLEAKS_FILE to DefectDojo"
             
             curl -X POST "$DEFECTDOJO_URL/api/v2/import-scan/" \
@@ -61,15 +65,15 @@ jobs:
           fi
       
       - name: Upload Semgrep results to DefectDojo
-        if: hashFiles('sast-results/semgrep-results*/results.json') != ''
+        if: hashFiles('sast-results/semgrep-results/results.json') != ''
         env:
           DEFECTDOJO_URL: ${{ secrets.DEFECTDOJO_URL }}
           DEFECTDOJO_API_KEY: ${{ secrets.DEFECTDOJO_API_KEY }}
           ENGAGEMENT_ID: ${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}
         run: |
-          SEMGREP_FILE=$(find sast-results -name "results.json" -path "*/semgrep-results*/*" | head -1)
+          SEMGREP_FILE="sast-results/semgrep-results/results.json"
           
-          if [ -n "$SEMGREP_FILE" ]; then
+          if [ -f "$SEMGREP_FILE" ]; then
             echo "Uploading $SEMGREP_FILE to DefectDojo"
             
             curl -X POST "$DEFECTDOJO_URL/api/v2/import-scan/" \
@@ -86,15 +90,15 @@ jobs:
           fi
       
       - name: Upload Bandit results to DefectDojo
-        if: hashFiles('sast-results/bandit-results*/results.json') != ''
+        if: hashFiles('sast-results/bandit-results/results.json') != ''
         env:
           DEFECTDOJO_URL: ${{ secrets.DEFECTDOJO_URL }}
           DEFECTDOJO_API_KEY: ${{ secrets.DEFECTDOJO_API_KEY }}
           ENGAGEMENT_ID: ${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}
         run: |
-          BANDIT_FILE=$(find sast-results -name "results.json" -path "*/bandit-results*/*" | head -1)
+          BANDIT_FILE="sast-results/bandit-results/results.json"
           
-          if [ -n "$BANDIT_FILE" ]; then
+          if [ -f "$BANDIT_FILE" ]; then
             echo "Uploading $BANDIT_FILE to DefectDojo"
             
             curl -X POST "$DEFECTDOJO_URL/api/v2/import-scan/" \
