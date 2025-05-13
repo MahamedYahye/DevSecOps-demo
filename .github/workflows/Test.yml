@@ -345,9 +345,9 @@ jobs:
             echo "⚠️ Semgrep results not found"
           fi
           
-          # Gitleaks
+          # Gitleaks - Correctie voor de scan_type
           if [ -f "gitleaks-results/gitleaks-results.json" ]; then
-            upload_scan_to_defectdojo "gitleaks-results/gitleaks-results.json" "GitLeaks Scan" "Gitleaks"
+            upload_scan_to_defectdojo "gitleaks-results/gitleaks-results.json" "Gitleaks Scan" "Gitleaks"
           else
             echo "⚠️ Gitleaks results not found"
           fi
