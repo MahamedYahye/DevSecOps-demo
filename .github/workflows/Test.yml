@@ -253,55 +253,108 @@ jobs:
           path: bandit-results/
           if-no-files-found: warn
 
-          # Voeg deze job toe aan het einde van Test.yml
-  upload_semgrep:
-    name: Upload Semgrep to DefectDojo
+# Deze job toevoegen aan het einde van Test.yml
+  upload_scan_results:
+    name: Upload Scan Results to Security Tools
     runs-on: ubuntu-latest
-    needs: [semgrep]  # Wacht alleen tot de semgrep job klaar is
+    needs: [gitleaks, semgrep, bandit]  # Wacht tot alle scan jobs zijn afgerond
     steps:
-      # Download Semgrep artifact (nodig omdat artifacts tussen jobs gedeeld worden)
+      # Download artifacts
+      - name: Download Gitleaks Results
+        uses: actions/download-artifact@v4
+        with:
+          name: gitleaks-results
+          path: gitleaks-results
+
       - name: Download Semgrep Results
         uses: actions/download-artifact@v4
         with:
           name: semgrep-results
           path: semgrep-results
-      
+
+      - name: Download Bandit Results
+        uses: actions/download-artifact@v4
+        with:
+          name: bandit-results
+          path: bandit-results
+
       # Debug - Toon gedownloade bestanden
       - name: List downloaded artifacts
         run: |
-          echo "=== Semgrep Results ==="
+          echo "=== Downloaded Artifacts ==="
+          echo "Gitleaks:"
+          ls -la gitleaks-results || echo "No gitleaks-results directory found"
+          echo "Semgrep:"
           ls -la semgrep-results || echo "No semgrep-results directory found"
-          find semgrep-results -type f -name "*.json" | sort
-      
-      # Upload Semgrep naar DefectDojo
-      - name: Upload Semgrep to DefectDojo
-        if: hashFiles('semgrep-results/results.json') != ''
+          echo "Bandit:"
+          ls -la bandit-results || echo "No bandit-results directory found"
+
+      # Upload alle scans naar DefectDojo
+      - name: Upload All Scans to DefectDojo
         env:
           DEFECTDOJO_URL: ${{ secrets.DEFECTDOJO_URL }}
           DEFECTDOJO_API_KEY: ${{ secrets.DEFECTDOJO_API_KEY }}
           DEFECTDOJO_ENGAGEMENT_ID: ${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}
         run: |
+          # Functie voor het uploaden van een scan
+          upload_scan_to_defectdojo() {
+            local file="$1"
+            local scan_type="$2"
+            local scan_name="$3"
+            local response_file="${scan_name,,}_response.txt"  # Lowercase scan_name
+            
+            # Als bestand niet bestaat, overslaan
+            if [ ! -f "$file" ]; then
+              echo "❌ $scan_name bestand niet gevonden: $file"
+              return 1
+            fi
+            
+            echo "⌛ Uploading $scan_name scan van $file"
+            
+            local http_code
+            http_code=$(curl -s -o "$response_file" -w "%{http_code}" \
+              -X POST "$DEFECTDOJO_URL/api/v2/import-scan/" \
+              -H "Authorization: Token $DEFECTDOJO_API_KEY" \
+              -F "scan_date=$(date +%Y-%m-%d)" \
+              -F "scan_type=$scan_type" \
+              -F "close_old_findings=true" \
+              -F "deduplication_on_engagement=true" \
+              -F "engagement=$DEFECTDOJO_ENGAGEMENT_ID" \
+              -F "file=@$file")
+            
+            if [ "$http_code" -ge 200 ] && [ "$http_code" -lt 300 ]; then
+              echo "✅ Successfully uploaded $scan_name scan"
+              echo "Response:"
+              cat "$response_file"
+              return 0
+            else
+              echo "❌ Upload failed for $scan_name with HTTP code $http_code"
+              echo "Error response:"
+              cat "$response_file"
+              return 1
+            fi
+          }
+          
+          # Upload elke scan
           SCAN_DATE=$(date +%Y-%m-%d)
-          SEMGREP_FILE="semgrep-results/results.json"
           
-          echo "⌛ Uploading Semgrep scan from $SEMGREP_FILE"
-          
-          HTTP_CODE=$(curl -s -o semgrep_response.txt -w "%{http_code}" \
-            -X POST "$DEFECTDOJO_URL/api/v2/import-scan/" \
-            -H "Authorization: Token $DEFECTDOJO_API_KEY" \
-            -F "scan_date=$SCAN_DATE" \
-            -F "scan_type=Semgrep JSON Report" \
-            -F "close_old_findings=true" \
-            -F "deduplication_on_engagement=true" \
-            -F "engagement=$DEFECTDOJO_ENGAGEMENT_ID" \
-            -F "file=@$SEMGREP_FILE")
-          
-          if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
-            echo "✅ Successfully uploaded Semgrep scan"
-            echo "Response:"
-            cat semgrep_response.txt
+          # Semgrep
+          if [ -f "semgrep-results/results.json" ]; then
+            upload_scan_to_defectdojo "semgrep-results/results.json" "Semgrep JSON Report" "Semgrep"
           else
-            echo "❌ Upload failed with HTTP code $HTTP_CODE"
-            echo "Error response:"
-            cat semgrep_response.txt
+            echo "⚠️ Semgrep results not found"
+          fi
+          
+          # Gitleaks
+          if [ -f "gitleaks-results/gitleaks-results.json" ]; then
+            upload_scan_to_defectdojo "gitleaks-results/gitleaks-results.json" "GitLeaks Scan" "Gitleaks"
+          else
+            echo "⚠️ Gitleaks results not found"
+          fi
+          
+          # Bandit
+          if [ -f "bandit-results/results.json" ]; then
+            upload_scan_to_defectdojo "bandit-results/results.json" "Bandit Scan" "Bandit"
+          else
+            echo "⚠️ Bandit results not found"
           fi
