@@ -1,4 +1,5 @@
 name: Build, Scan and Push
+
 on:
   workflow_dispatch:  # Handmatig triggeren
   push:
@@ -27,9 +28,7 @@ jobs:
         run: |
           mkdir -p scan-results
           curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
-          
           syft flask-app:${{ github.sha }} -o cyclonedx-json=scan-results/sbom.cyclonedx.json -o spdx-json=scan-results/sbom.spdx.json
-          
           echo "Package Summary:"
           syft flask-app:${{ github.sha }} -o table | head -n 20
 
@@ -37,20 +36,14 @@ jobs:
         id: vulnerability_scan
         run: |
           curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
-          
           grype flask-app:${{ github.sha }} -o json > scan-results/grype-vulnerabilities.json
-          
           echo "Vulnerability Summary:"
           CRITICAL_COUNT=$(jq '.matches | map(select(.vulnerability.severity == "Critical")) | length' scan-results/grype-vulnerabilities.json)
           HIGH_COUNT=$(jq '.matches | map(select(.vulnerability.severity == "High")) | length' scan-results/grype-vulnerabilities.json)
-          
           echo "Critical vulnerabilities: $CRITICAL_COUNT"
           echo "High vulnerabilities: $HIGH_COUNT"
-          
-          # Store the count for later steps
           echo "critical_vulnerabilities=$CRITICAL_COUNT" >> $GITHUB_OUTPUT
           echo "high_vulnerabilities=$HIGH_COUNT" >> $GITHUB_OUTPUT
-          
           if [ "$CRITICAL_COUNT" -gt 0 ]; then
             echo "WARNING: $CRITICAL_COUNT critical vulnerabilities found"
             echo "Top Critical Vulnerabilities:"
@@ -68,7 +61,6 @@ jobs:
         id: security_gate
         run: |
           CRITICAL_COUNT=${{ steps.vulnerability_scan.outputs.critical_vulnerabilities }}
-          
           if [ "$CRITICAL_COUNT" -gt 0 ]; then
             echo "FAILED: $CRITICAL_COUNT critical vulnerabilities found"
             echo "⛔ Security gate failed - pushing of image aborted"
@@ -88,28 +80,23 @@ jobs:
       - name: Tag and Push Docker image
         if: success()
         run: |
-          # Tag voor ACR
           docker tag flask-app:${{ github.sha }} ${{ secrets.ACR_LOGIN_SERVER }}/flask-app:latest
           docker tag flask-app:${{ github.sha }} ${{ secrets.ACR_LOGIN_SERVER }}/flask-app:${{ github.sha }}
-          
-          # Push naar ACR
           docker push ${{ secrets.ACR_LOGIN_SERVER }}/flask-app:latest
           docker push ${{ secrets.ACR_LOGIN_SERVER }}/flask-app:${{ github.sha }}
-          
           echo "Successfully pushed secure image to Azure Container Registry"
+
   upload_security_results:
     name: Upload Security Results to Security Tools
     needs: build_scan_push
     runs-on: ubuntu-latest
     steps:
-      # Download scan resultaten
       - name: Download Scan Results
         uses: actions/download-artifact@v4
         with:
           name: scan-results-${{ github.sha }}
           path: scan-results
 
-      # Upload Grype resultaten naar DefectDojo
       - name: Upload Grype to DefectDojo
         env:
           DEFECTDOJO_URL: ${{ secrets.DEFECTDOJO_URL }}
@@ -117,7 +104,6 @@ jobs:
           DEFECTDOJO_ENGAGEMENT_ID: ${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}
         run: |
           echo "⌛ Uploading Grype scan"
-          
           curl -X POST "$DEFECTDOJO_URL/api/v2/import-scan/" \
             -H "Authorization: Token $DEFECTDOJO_API_KEY" \
             -F "scan_date=$(date +%Y-%m-%d)" \
@@ -126,22 +112,19 @@ jobs:
             -F "deduplication_on_engagement=true" \
             -F "engagement=$DEFECTDOJO_ENGAGEMENT_ID" \
             -F "file=@scan-results/grype-vulnerabilities.json"
-            
           echo "✅ Grype scan uploaded"
 
-      # Upload SBOM naar Dependency-Track met de directe bestandsupload methode
       - name: Upload SBOM to Dependency-Track
         env:
           DT_URL: ${{ secrets.DEPENDENCYTRACK_URL }}
           DT_API_KEY: ${{ secrets.DEPENDENCYTRACK_API_KEY }}
           PROJECT_UUID: ${{ secrets.DEPENDENCYTRACK_PROJECT_UUID }}
         run: |
-          echo "⌛ Uploading SBOM to Dependency-Track"
-          
-          # Upload direct vanuit bestand met de API die multipart ondersteunt
+          echo "⌛ Preparing SBOM for upload"
+          gzip -c scan-results/sbom.cyclonedx.json > sbom.cyclonedx.json.gz
+          echo "⌛ Uploading compressed SBOM to Dependency-Track"
           curl -X POST "$DT_URL/api/v1/bom/upload" \
             -H "X-API-Key: $DT_API_KEY" \
             -F "project=$PROJECT_UUID" \
-            -F "bom=@scan-results/sbom.cyclonedx.json"
-            
+            -F "bom=@sbom.cyclonedx.json.gz"
           echo "✅ SBOM uploaded to Dependency-Track"
