@@ -120,17 +120,10 @@ jobs:
           DT_API_KEY: ${{ secrets.DEPENDENCYTRACK_API_KEY }}
           PROJECT_UUID: ${{ secrets.DEPENDENCYTRACK_PROJECT_UUID }}
         run: |
-          echo "⌛ Preparing SBOM for upload"
-          
-          # Comprimeer het SBOM-bestand
-          gzip -c scan-results/sbom.cyclonedx.json > sbom.cyclonedx.json.gz
-          
-          # Upload het gecomprimeerde bestand
-          echo "⌛ Uploading compressed SBOM to Dependency-Track"
+          echo "⌛ Uploading SBOM to Dependency-Track"
           curl -X POST "$DT_URL/api/v1/bom" \
             -H "X-API-Key: $DT_API_KEY" \
             -H "Content-Type: multipart/form-data" \
-            -H "Accept-Encoding: gzip, deflate" \
             -F "project=$PROJECT_UUID" \
-            -F "bom=@sbom.cyclonedx.json.gz"
+            -F "bom=@scan-results/sbom.cyclonedx.json"
           echo "✅ SBOM uploaded to Dependency-Track"
