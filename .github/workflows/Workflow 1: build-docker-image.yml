@@ -97,7 +97,7 @@ jobs:
           docker push ${{ secrets.ACR_LOGIN_SERVER }}/flask-app:${{ github.sha }}
           
           echo "Successfully pushed secure image to Azure Container Registry"
-upload_security_results:
+  upload_security_results:
     name: Upload Security Results to Security Tools
     needs: build_scan_push
     runs-on: ubuntu-latest
