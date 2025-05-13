@@ -97,10 +97,9 @@ jobs:
           docker push ${{ secrets.ACR_LOGIN_SERVER }}/flask-app:${{ github.sha }}
           
           echo "Successfully pushed secure image to Azure Container Registry"
-# Voeg deze job toe aan het einde van "Workflow 1: build-docker-image.yml"
-  upload_security_results:
+upload_security_results:
     name: Upload Security Results to Security Tools
-    needs: build_scan_push  # De naam van de bestaande job in build-docker-image.yml
+    needs: build_scan_push
     runs-on: ubuntu-latest
     steps:
       # Download scan resultaten
@@ -130,7 +129,7 @@ jobs:
             
           echo "✅ Grype scan uploaded"
 
-      # Upload SBOM naar Dependency-Track
+      # Upload SBOM naar Dependency-Track met de directe bestandsupload methode
       - name: Upload SBOM to Dependency-Track
         env:
           DT_URL: ${{ secrets.DEPENDENCYTRACK_URL }}
@@ -139,13 +138,10 @@ jobs:
         run: |
           echo "⌛ Uploading SBOM to Dependency-Track"
           
-          # Encodeer SBOM bestand naar base64
-          SBOM_BASE64=$(base64 -w 0 scan-results/sbom.cyclonedx.json)
-          
-          # Upload naar Dependency-Track
-          curl -X POST "$DT_URL/api/v1/bom" \
+          # Upload direct vanuit bestand met de API die multipart ondersteunt
+          curl -X POST "$DT_URL/api/v1/bom/upload" \
             -H "X-API-Key: $DT_API_KEY" \
-            -H "Content-Type: application/json" \
-            -d "{\"project\":\"$PROJECT_UUID\", \"bom\":\"$SBOM_BASE64\"}"
+            -F "project=$PROJECT_UUID" \
+            -F "bom=@scan-results/sbom.cyclonedx.json"
             
           echo "✅ SBOM uploaded to Dependency-Track"
