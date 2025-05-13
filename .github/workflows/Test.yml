@@ -253,7 +253,7 @@ jobs:
           path: bandit-results/
           if-no-files-found: warn
 
-# Deze job toevoegen aan het einde van Test.yml
+# # Deze job toevoegen aan het einde van Test.yml
   upload_scan_results:
     name: Upload Scan Results to Security Tools
     runs-on: ubuntu-latest
@@ -278,17 +278,6 @@ jobs:
           name: bandit-results
           path: bandit-results
 
-      # Debug - Toon gedownloade bestanden
-      - name: List downloaded artifacts
-        run: |
-          echo "=== Downloaded Artifacts ==="
-          echo "Gitleaks:"
-          ls -la gitleaks-results || echo "No gitleaks-results directory found"
-          echo "Semgrep:"
-          ls -la semgrep-results || echo "No semgrep-results directory found"
-          echo "Bandit:"
-          ls -la bandit-results || echo "No bandit-results directory found"
-
       # Upload alle scans naar DefectDojo
       - name: Upload All Scans to DefectDojo
         env:
@@ -301,60 +290,27 @@ jobs:
             local file="$1"
             local scan_type="$2"
             local scan_name="$3"
-            local response_file="${scan_name,,}_response.txt"  # Lowercase scan_name
             
-            # Als bestand niet bestaat, overslaan
-            if [ ! -f "$file" ]; then
-              echo "❌ $scan_name bestand niet gevonden: $file"
-              return 1
-            fi
+            echo "⌛ Uploading $scan_name scan"
             
-            echo "⌛ Uploading $scan_name scan van $file"
-            
-            local http_code
-            http_code=$(curl -s -o "$response_file" -w "%{http_code}" \
-              -X POST "$DEFECTDOJO_URL/api/v2/import-scan/" \
+            curl -X POST "$DEFECTDOJO_URL/api/v2/import-scan/" \
               -H "Authorization: Token $DEFECTDOJO_API_KEY" \
               -F "scan_date=$(date +%Y-%m-%d)" \
               -F "scan_type=$scan_type" \
               -F "close_old_findings=true" \
               -F "deduplication_on_engagement=true" \
               -F "engagement=$DEFECTDOJO_ENGAGEMENT_ID" \
-              -F "file=@$file")
-            
-            if [ "$http_code" -ge 200 ] && [ "$http_code" -lt 300 ]; then
-              echo "✅ Successfully uploaded $scan_name scan"
-              echo "Response:"
-              cat "$response_file"
-              return 0
-            else
-              echo "❌ Upload failed for $scan_name with HTTP code $http_code"
-              echo "Error response:"
-              cat "$response_file"
-              return 1
-            fi
+              -F "file=@$file"
+              
+            echo "✅ $scan_name scan uploaded"
           }
           
-          # Upload elke scan
-          SCAN_DATE=$(date +%Y-%m-%d)
-          
+          # Upload scans
           # Semgrep
-          if [ -f "semgrep-results/results.json" ]; then
-            upload_scan_to_defectdojo "semgrep-results/results.json" "Semgrep JSON Report" "Semgrep"
-          else
-            echo "⚠️ Semgrep results not found"
-          fi
+          upload_scan_to_defectdojo "semgrep-results/results.json" "Semgrep JSON Report" "Semgrep"
           
-          # Gitleaks - Correctie voor de scan_type
-          if [ -f "gitleaks-results/gitleaks-results.json" ]; then
-            upload_scan_to_defectdojo "gitleaks-results/gitleaks-results.json" "Gitleaks Scan" "Gitleaks"
-          else
-            echo "⚠️ Gitleaks results not found"
-          fi
+          # Gitleaks
+          upload_scan_to_defectdojo "gitleaks-results/gitleaks-results.json" "Gitleaks Scan" "Gitleaks"
           
           # Bandit
-          if [ -f "bandit-results/results.json" ]; then
-            upload_scan_to_defectdojo "bandit-results/results.json" "Bandit Scan" "Bandit"
-          else
-            echo "⚠️ Bandit results not found"
-          fi
+          upload_scan_to_defectdojo "bandit-results/results.json" "Bandit Scan" "Bandit"
