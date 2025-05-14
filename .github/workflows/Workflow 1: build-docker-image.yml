@@ -1,14 +1,23 @@
+# 
 name: Build, Scan and Push
 
 on:
   workflow_dispatch:  # Handmatig triggeren
   push:
     branches: [main]  # Bij pushes naar main branch
+    
+# Deze regel toevoegen om te wachten op de security workflow
+workflow_run:
+  workflows: ["Modular SAST Workflow"]
+  types:
+    - completed
 
 jobs:
   build_scan_push:
     name: Build, Scan and Push Docker Image
     runs-on: ubuntu-latest
+    # Deze regel zorgt ervoor dat de job alleen doorgaat als de SAST workflow succesvol was, of niet getriggerd
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name != 'workflow_run' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v3

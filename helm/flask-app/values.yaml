@@ -1,9 +1,10 @@
 replicaCount: 1
 
 image:
-  repository: ghcr.io/mahamedyahye/flask-app
-  tag: 0.0.7
-  pullPolicy: IfNotPresent
+  repository: devsecops1.azurecr.io/flask-app
+  tag: latest
+  pullPolicy: Always
+
 
 service:
   type: NodePort
