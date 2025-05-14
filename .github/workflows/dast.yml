@@ -228,7 +228,7 @@ on:
 jobs:
   check_build_status:
     name: Check Build Workflow Status
-    runs-on: self-hosted
+    runs-on: ubuntu-latest  # Veranderd van self-hosted naar ubuntu-latest
     steps:
       - name: Check build workflow status
         run: |
@@ -242,7 +242,7 @@ jobs:
   zap-scan:
     name: ZAP Security Scan
     needs: [check_build_status]
-    runs-on: self-hosted
+    runs-on: ubuntu-latest  # Veranderd van self-hosted naar ubuntu-latest
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -255,17 +255,19 @@ jobs:
       id: zap
       continue-on-error: true
       run: |
-        echo "Scanning target URL: http://host.docker.internal:8888"
+        # Aangepast van host.docker.internal naar de URL van je app
+        # Je moet de URL aanpassen naar waar je app daadwerkelijk bereikbaar is
+        echo "Scanning target URL: https://your-app-url"  # Vervang door je echte app URL
         docker run --rm \
           -v "$(pwd)/zap-report:/zap/wrk" \
           zaproxy/zap-stable:latest \
-          zap-baseline.py -t http://host.docker.internal:8888 -r zap-report.html -x zap-report.xml
+          zap-baseline.py -t https://your-app-url -r zap-report.html -x zap-report.xml  # Vervang URL
 
         # Status code opslaan
         echo "zap_status=$?" >> $GITHUB_OUTPUT
 
     - name: Check for critical vulnerabilities
-      continue-on-error: true 
+      continue-on-error: true
       run: |
         if [ -f "zap-report/zap-report.html" ]; then
           echo "Checking for critical vulnerabilities in scan results..."
@@ -287,7 +289,7 @@ jobs:
         fi
 
     - name: Upload ZAP report
-      if: always()  # Upload report even if previous steps failed
+      if: always()
       uses: actions/upload-artifact@v4
       with:
         name: zap-report
@@ -296,8 +298,8 @@ jobs:
   upload_to_defectdojo:
     name: Upload DAST Results to DefectDojo
     needs: [zap-scan]
-    runs-on: self-hosted
-    if: always()  # Altijd uitvoeren, zelfs als zap-scan faalde
+    runs-on: ubuntu-latest  # Veranderd van self-hosted naar ubuntu-latest
+    if: always()
     steps:
       - uses: actions/download-artifact@v4
         with:
