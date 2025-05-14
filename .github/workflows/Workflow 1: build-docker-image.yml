@@ -5,12 +5,10 @@ on:
   workflow_dispatch:  # Handmatig triggeren
   push:
     branches: [main]  # Bij pushes naar main branch
-    
-# Deze regel toevoegen om te wachten op de security workflow
-workflow_run:
-  workflows: ["Modular SAST Workflow"]
-  types:
-    - completed
+  workflow_run:
+    workflows: ["Modular SAST Workflow"]
+    types:
+      - completed
 
 jobs:
   build_scan_push:
