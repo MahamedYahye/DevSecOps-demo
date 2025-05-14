@@ -301,7 +301,7 @@ jobs:
     runs-on: ubuntu-latest  
     if: always()
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v3
         with:
           name: zap-report
           path: zap-results
