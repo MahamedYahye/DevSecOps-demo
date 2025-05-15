@@ -290,15 +290,23 @@ jobs:
           DEFECTDOJO_ENGAGEMENT_ID: ${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}
         run: |
           echo "⌛ Uploading Grype scan"
-          # Gebruik datum EN tijd formaat (ISO8601-achtig) voor betere traceerbaarheid
-          SCAN_DATETIME=$(date +"%Y-%m-%dT%H:%M:%S")
-          echo "Using scan datetime: $SCAN_DATETIME"
+          # Gebruik alleen datum formaat zoals vereist door DefectDojo (YYYY-MM-DD)
+          SCAN_DATE=$(date +"%Y-%m-%d")
+          # Ook tijd apart opslaan voor logging
+          SCAN_TIME=$(date +"%H:%M:%S")
+          echo "Using scan date: $SCAN_DATE and time: $SCAN_TIME"
+          
+          # Voeg een beschrijving toe die de tijd bevat, zodat je scans kunt onderscheiden
+          SCAN_DESC="Scan uitgevoerd op $SCAN_DATE om $SCAN_TIME"
           
           curl -X POST "$DEFECTDOJO_URL/api/v2/import-scan/" \
             -H "Authorization: Token $DEFECTDOJO_API_KEY" \
-            -F "scan_date=$SCAN_DATETIME" \
+            -F "scan_date=$SCAN_DATE" \
             -F "scan_type=Anchore Grype" \
             -F "close_old_findings=true" \
+            -F "test_title=Grype Scan $SCAN_DATE $SCAN_TIME" \
+            -F "tags=time_$SCAN_TIME" \
+            -F "description=$SCAN_DESC" \
             -F "deduplication_on_engagement=true" \
             -F "engagement=$DEFECTDOJO_ENGAGEMENT_ID" \
             -F "file=@scan-results/grype-vulnerabilities.json"
