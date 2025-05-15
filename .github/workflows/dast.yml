@@ -483,7 +483,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Prepare directories
         run: |
@@ -516,7 +516,7 @@ jobs:
 
       - name: Upload DAST report
         if: ${{ always() }}
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: dast-report
           path: reports/
