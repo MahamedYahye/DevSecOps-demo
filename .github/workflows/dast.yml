@@ -475,15 +475,16 @@ name: DAST Scan Simple
 
 on:
   push:
-    branches: [ main ]
+    branches:
+      - main
 
 jobs:
   dast-scan:
     runs-on: self-hosted
 
     steps:
-      - uses: actions/checkout@v4
-        name: Checkout repository
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
       - name: Prepare directories
         run: |
@@ -512,7 +513,7 @@ jobs:
               -I
 
       - name: Upload DAST report
-        if: always
+        if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
           name: dast-report
