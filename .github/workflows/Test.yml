@@ -14,26 +14,26 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
+          
       - name: Install GitLeaks
         run: |
           wget https://github.com/zricethezav/gitleaks/releases/download/v8.18.1/gitleaks_8.18.1_linux_x64.tar.gz
           tar -xzf gitleaks_8.18.1_linux_x64.tar.gz
           chmod +x gitleaks
           sudo mv gitleaks /usr/local/bin/
-
+          
       - name: Run GitLeaks scan
         id: gitleaks_scan
         continue-on-error: true
         run: |
           # Scan en sla resultaten op
           gitleaks detect --source=. --verbose --redact --report-format=json --report-path=gitleaks-results.json
-
+          
           # Toon bevindingen
           echo "=== GitLeaks Resultaten ==="
           if [ -f gitleaks-results.json ]; then
             FOUND=$(jq 'length' gitleaks-results.json)
-
+            
             if [ "$FOUND" -gt 0 ]; then
               echo "⚠️ GitLeaks heeft $FOUND potentiële geheimen gevonden"
               jq -r '.[] | "- \(.Rule): \(.Description) in \(.File)"' gitleaks-results.json
@@ -41,7 +41,7 @@ jobs:
               echo "✅ Geen geheimen gevonden"
             fi
           fi
-
+          
       - name: Upload GitLeaks Results
         uses: actions/upload-artifact@v4
         with:
@@ -55,31 +55,31 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
+      
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-
+        
       - name: Install Semgrep
         run: |
           python -m pip install semgrep
-
+        
       - name: Run Semgrep scan
         id: semgrep_scan
         continue-on-error: true
         run: |
           # Maak results directory
           mkdir -p semgrep-results
-
+          
           # Voer Semgrep uit
           semgrep --config p/default --json --output semgrep-results/results.json .
-
+          
           # Toon bevindingen
           echo "=== Semgrep Resultaten ==="
           if [ -f semgrep-results/results.json ]; then
             FINDINGS=$(jq '.results | length' semgrep-results/results.json)
-
+            
             if [ "$FINDINGS" -gt 0 ]; then
               echo "⚠️ Semgrep heeft $FINDINGS bevindingen gedetecteerd"
               jq -r '.results[] | "- \(.check_id): \(.extra.message) in \(.path):\(.start.line)"' semgrep-results/results.json
@@ -89,7 +89,7 @@ jobs:
           else
             echo "Geen Semgrep resultaten gevonden"
           fi
-
+          
       - name: Upload Semgrep Results
         uses: actions/upload-artifact@v4
         with:
@@ -103,26 +103,26 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
+        
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-
+          
       - name: Install Bandit
         run: |
           python -m pip install bandit
-
+          
       - name: Run Bandit
         id: bandit_scan
         continue-on-error: true
         run: |
           # Maak results directory
           mkdir -p bandit-results
-
+          
           # Productie-level scan
           bandit -r . -ll -f json -o bandit-results/results.json || true
-
+          
           # Toon bevindingen
           if [ -f bandit-results/results.json ]; then
             echo "=== Beveiligingsproblemen ==="
@@ -130,14 +130,14 @@ jobs:
             MEDIUM_COUNT=$(jq '.results | map(select(.issue_severity == "MEDIUM")) | length' bandit-results/results.json)
             LOW_COUNT=$(jq '.results | map(select(.issue_severity == "LOW")) | length' bandit-results/results.json)
             TOTAL=$((HIGH_COUNT + MEDIUM_COUNT + LOW_COUNT))
-
+            
             echo "Hoog: $HIGH_COUNT, Gemiddeld: $MEDIUM_COUNT, Laag: $LOW_COUNT, Totaal: $TOTAL"
-
+            
             if [ "$TOTAL" -gt 0 ]; then
               jq -r '.results[] | "[\(.issue_severity)] \(.issue_text) in \(.filename) lijn \(.line_number)"' bandit-results/results.json
             fi
           fi
-
+          
       - name: Upload Bandit Results
         uses: actions/upload-artifact@v4
         with:
@@ -182,9 +182,9 @@ jobs:
             local file="$1"
             local scan_type="$2"
             local scan_name="$3"
-
+            
             echo "⌛ Uploading $scan_name scan"
-
+            
             curl -X POST "$DEFECTDOJO_URL/api/v2/import-scan/" \
               -H "Authorization: Token $DEFECTDOJO_API_KEY" \
               -F "scan_date=$(date +%Y-%m-%d)" \
@@ -193,16 +193,16 @@ jobs:
               -F "deduplication_on_engagement=true" \
               -F "engagement=$DEFECTDOJO_ENGAGEMENT_ID" \
               -F "file=@$file"
-
+              
             echo "✅ $scan_name scan uploaded"
           }
-
+          
           # Upload scans
           # Semgrep
           upload_scan_to_defectdojo "semgrep-results/results.json" "Semgrep JSON Report" "Semgrep"
-
+          
           # Gitleaks
           upload_scan_to_defectdojo "gitleaks-results/gitleaks-results.json" "Gitleaks Scan" "Gitleaks"
-
+          
           # Bandit
           upload_scan_to_defectdojo "bandit-results/results.json" "Bandit Scan" "Bandit"

@@ -132,6 +132,16 @@ name: Build, Scan and Push
 
 on:
   workflow_dispatch:  # Alleen handmatig triggeren
+    inputs:
+      version_increment:
+        description: 'Type of version increment (major, minor, patch)'
+        required: false
+        default: 'patch'
+        type: choice
+        options:
+          - major
+          - minor
+          - patch
   workflow_run:
     workflows: ["Modular SAST Workflow"]
     types:
@@ -145,7 +155,7 @@ jobs:
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
+      - name: Checkout with Full History
         uses: actions/checkout@v3
         with:
           fetch-depth: 0  # Volledige geschiedenis ophalen voor versioning
@@ -153,30 +163,42 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
         
-      - name: Determine SemVer
+      - name: Generate SemVer Tag
         id: semver
         run: |
-          # Kijk of er git tags zijn die voldoen aan SemVer patroon
-          LATEST_TAG=$(git describe --tags --abbrev=0 --match "v[0-9]*.[0-9]*.[0-9]*" 2>/dev/null || echo "v0.1.0")
-          echo "Latest tag: $LATEST_TAG"
-          
-          # Strip de 'v' prefix voor Docker image
-          VERSION=${LATEST_TAG#v}
-          
-          # Controleer of dit een nieuwe commit is sinds de laatste tag
-          if git describe --exact-match --tags HEAD 2>/dev/null; then
-            # We zijn precies op een tag
-            echo "Using exact tag version: $VERSION"
+          # Bepaal welk type increment we willen doen
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            INCREMENT_TYPE="${{ github.event.inputs.version_increment }}"
           else
-            # We zijn na een tag, voeg commits en hash toe aan de versie
-            COMMIT_COUNT=$(git rev-list ${LATEST_TAG}..HEAD --count)
-            SHORT_SHA=$(git rev-parse --short HEAD)
-            VERSION="${VERSION}-dev.${COMMIT_COUNT}+${SHORT_SHA}"
-            echo "Generated dev version: $VERSION"
+            # Default naar patch voor automatische runs
+            INCREMENT_TYPE="patch"
           fi
-          
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Using version: $VERSION for Docker image"
+          echo "Increment type: $INCREMENT_TYPE"
+          # Haal de laatste versie tag op of begin bij v0.0.0
+          LATEST_TAG=$(git describe --tags --abbrev=0 --match "v*" 2>/dev/null || echo "v0.0.0")
+          LATEST_VERSION=${LATEST_TAG#v}
+          echo "Latest version: $LATEST_VERSION"
+          # Split versie in onderdelen
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$LATEST_VERSION"
+          # Verhoog de juiste component op basis van increment type
+          case "$INCREMENT_TYPE" in
+          "major")
+            MAJOR=$((MAJOR+1))
+            MINOR=0
+            PATCH=0
+            ;;
+          "minor")
+            MINOR=$((MINOR+1))
+            PATCH=0
+            ;;
+          "patch")
+            PATCH=$((PATCH+1))
+            ;;
+          esac
+          # Stel nieuwe versie samen
+          NEW_VERSION="$MAJOR.$MINOR.$PATCH"
+          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "Creating image with tag: $NEW_VERSION"
 
       - name: Build Docker image
         uses: docker/build-push-action@v5
@@ -242,17 +264,11 @@ jobs:
       - name: Tag and Push Docker image
         if: success()
         run: |
-          # Tag met semver
+          # Tag met versienummer
           docker tag flask-app:${{ github.sha }} ${{ secrets.ACR_LOGIN_SERVER }}/flask-app:${{ steps.semver.outputs.version }}
-          # Tag met latest
-          docker tag flask-app:${{ github.sha }} ${{ secrets.ACR_LOGIN_SERVER }}/flask-app:latest
-          # Tag met commit SHA
-          docker tag flask-app:${{ github.sha }} ${{ secrets.ACR_LOGIN_SERVER }}/flask-app:${{ github.sha }}
           
-          # Push alle tags
+          # Push image
           docker push ${{ secrets.ACR_LOGIN_SERVER }}/flask-app:${{ steps.semver.outputs.version }}
-          docker push ${{ secrets.ACR_LOGIN_SERVER }}/flask-app:latest
-          docker push ${{ secrets.ACR_LOGIN_SERVER }}/flask-app:${{ github.sha }}
           
           echo "Successfully pushed secure image to Azure Container Registry with version ${{ steps.semver.outputs.version }}"
 
