@@ -470,15 +470,18 @@
 #             exit 1
 #           fi
 
-# .github/workflows/dast-scan-simple.yml
 name: DAST Scan Simple
 
 on:
-  push:
-    branches: [ main ]
+  workflow_run:
+    workflows:
+      - "Build, Scan and Push"
+    types:
+      - completed
 
 jobs:
   dast-scan:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: self-hosted
 
     steps:
@@ -487,32 +490,41 @@ jobs:
 
       - name: Prepare directories
         run: |
-          mkdir -p reports zap-wrk
+          mkdir -p reports zap-wrk zap-home
 
-      - name: Verify service is reachable
+      - name: Wait for service
         run: |
-          echo "Checken of de app luistert op localhost:8888…"
+          echo "Wachten tot app op poort 8888…"
           until curl -f http://localhost:8888; do
+            echo "…nog niet bereikbaar, 2s wachten"
             sleep 2
           done
 
       - name: Run OWASP ZAP baseline scan
         run: |
-          echo "Start ZAP-baseline met --autooff zodat alleen onze -r rapportage draait"
+          # Kies juiste netwerkflags en URL per OS
+          if [ "$(uname)" = "Linux" ]; then
+            DOCKER_NET="--network host"
+            TARGET="http://localhost:8888"
+          else
+            DOCKER_NET="--add-host host.docker.internal:host-gateway"
+            TARGET="http://host.docker.internal:8888"
+          fi
+          echo "ZAP scant op $TARGET"
           docker run --rm \
-            --network host \
+            $DOCKER_NET \
             -v "${{ github.workspace }}/reports":/zap/reports \
             -v "${{ github.workspace }}/zap-wrk":/zap/wrk \
+            -v "${{ github.workspace }}/zap-home":/home/zap \
             zaproxy/zap-stable:latest \
             zap-baseline.py \
-              -t http://localhost:8888 \
+              -t $TARGET \
               -r /zap/reports/dast-report.html \
               -J /zap/reports/dast-report.json \
-              --autooff \
+              -d \
               -m 2 \
               -T 5 \
-              -I \
-            || echo "DAST scan gaf fouten, maar de pipeline gaat door"
+              -I
 
       - name: Upload DAST report
         if: ${{ always() }}
