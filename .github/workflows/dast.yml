@@ -242,7 +242,7 @@
 #   zap-scan:
 #     name: ZAP Security Scan
 #     needs: [check_build_status]
-#     runs-on: self-hosted  
+#     runs-on: self-hosted
 #     steps:
 #     - name: Checkout code
 #       uses: actions/checkout@v4
@@ -298,7 +298,7 @@
 #   upload_to_defectdojo:
 #     name: Upload DAST Results to DefectDojo
 #     needs: [zap-scan]
-#     runs-on: ubuntu-latest  
+#     runs-on: ubuntu-latest
 #     if: always()
 #     steps:
 #       - uses: actions/download-artifact@v3
@@ -368,7 +368,7 @@
 #   zap-scan:
 #     name: ZAP Security Scan
 #     needs: [check_build_status]
-#     runs-on: self-hosted  
+#     runs-on: self-hosted
 #     steps:
 #     - name: Checkout code
 #       uses: actions/checkout@v4
@@ -384,7 +384,7 @@
 #         # Gebruik de correcte service naam en poort uit kubectl get services
 #         SERVICE_NAME="flask-app"
 #         SERVICE_PORT="80"
-        
+
 #         echo "Scanning target URL: http://${SERVICE_NAME}:${SERVICE_PORT}"
 #         docker run --rm \
 #           -v "$(pwd)/zap-report:/zap/wrk" \
