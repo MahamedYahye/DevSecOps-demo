@@ -475,27 +475,26 @@ name: DAST Scan Simple
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
 
 jobs:
   dast-scan:
     runs-on: self-hosted
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        name: Checkout repository
 
       - name: Prepare directories
         run: |
-          mkdir -p reports
-          mkdir -p zap-wrk
+          mkdir -p reports zap-wrk zap-home
 
       - name: Verify service is reachable
         run: |
-          echo "Checken of de app luistert op localhost:8888…"
-          curl -f http://localhost:8888/ \
-            || (echo "App niet bereikbaar op poort 8888" && exit 1)
+          until curl -f http://localhost:8888; do
+            echo "Wachten op service op localhost:8888…"
+            sleep 2
+          done
 
       - name: Run OWASP ZAP baseline scan
         run: |
@@ -503,13 +502,18 @@ jobs:
             --network host \
             -v "${{ github.workspace }}/reports":/zap/reports \
             -v "${{ github.workspace }}/zap-wrk":/zap/wrk \
+            -v "${{ github.workspace }}/zap-home":/home/zap \
             zaproxy/zap-stable:latest \
             zap-baseline.py \
               -t http://localhost:8888 \
-              -r /zap/reports/dast-report.html
+              -r /zap/reports/dast-report.html \
+              -J /zap/reports/dast-report.json \
+              --autooff \
+              -I
 
       - name: Upload DAST report
+        if: always
         uses: actions/upload-artifact@v4
         with:
           name: dast-report
-          path: reports/dast-report.html
+          path: reports/
