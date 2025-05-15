@@ -2,5 +2,5 @@ apiVersion: v2
 name: flask-app
 description: A simple Helm chart for Flask application
 type: application
-version: 0.1.0
-appVersion: "1.0.0"
+version: 0.0.23
+appVersion: "{{ .Values.image.tag }}"

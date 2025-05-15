@@ -2,12 +2,11 @@ replicaCount: 1
 
 image:
   repository: devsecops1.azurecr.io/flask-app
-  tag: latest
+  tag: "0.0.23"
   pullPolicy: Always
-
 
 service:
   type: NodePort
-  port: 80      
-  targetPort: 5000  
+  port: 80
+  targetPort: 5000
   nodePort: 30080
