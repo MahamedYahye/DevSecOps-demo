@@ -489,8 +489,8 @@ jobs:
       - name: Verify service is reachable
         run: |
           echo "Checken of de app luistert op localhost:8888…"
-          # op macOS/Windows check je via host.docker.internal
-          curl -f http://host.docker.internal:8888/ || (echo "App niet bereikbaar op poort 8888" && exit 1)
+          curl -f http://localhost:8888/ \
+            || (echo "App niet bereikbaar op poort 8888" && exit 1)
 
       - name: Prepare report directory
         run: mkdir -p reports
@@ -498,11 +498,11 @@ jobs:
       - name: Run OWASP ZAP baseline scan
         run: |
           docker run --rm \
-            --add-host host.docker.internal:host-gateway \
+            --network host \
             -v "${{ github.workspace }}/reports":/zap/reports \
             zaproxy/zap-stable:latest \
             zap-baseline.py \
-              -t http://host.docker.internal:8888 \
+              -t http://localhost:8888 \
               -r /zap/reports/dast-report.html
 
       - name: Upload DAST report
