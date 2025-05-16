@@ -1,0 +1,4 @@
+falco:
+  customRules:
+    custom-rules.yaml: |-
+      {{ .Files.Get "custom_rules.yaml" | indent 8 }}

@@ -1,0 +1,105 @@
+# custom_rules.yaml
+
+# ------------------
+# Macro-definities
+# ------------------
+trusted_ip_addresses:
+  - 10.0.0.0/8
+  - 192.168.0.0/16
+
+whitelisted_container_image:
+  - "devsecops1.azurecr.io/flask-app"
+
+flask_allowed_procs:
+  - python
+  - flask
+  - gunicorn
+  - sh
+  - bash
+  - sqlite3
+---
+# ------------------
+# Custom Falco Rules
+# ------------------
+
+- rule: Outbound connection to untrusted IP
+  desc: Detect outbound connections to IP addresses not listed as trusted.
+  condition: outbound and not fd.sip in (trusted_ip_addresses)
+  output: "Untrusted outbound connection detected (user=%user.name container=%container.id destination=%fd.sip)"
+  priority: CRITICAL
+  tags: [network, custom]
+
+- rule: Unauthorized shell in container
+  desc: Detect and respond to unauthorized shell access in containers.
+  condition: |
+    container and proc.name in ("bash","sh","zsh")
+    and not container.image.repository in (whitelisted_container_image)
+  output: "Unauthorized shell access detected (user=%user.name container=%container.id image=%container.image.repository:%container.image.tag)"
+  priority: CRITICAL
+  actions: exec_kubectl "kubectl delete pod %container.id"
+  tags: [container, custom]
+
+- rule: Privilege escalation to root
+  desc: Detect any attempt to switch to the root user within a container.
+  condition: container and user.uid != 0 and user.euid = 0
+  output: "Privilege escalation detected (user=%user.name container=%container.id command=%proc.cmdline)"
+  priority: CRITICAL
+  tags: [container, custom]
+
+- rule: Modify sensitive configuration files
+  desc: Detect modification of sensitive configuration files.
+  condition: evt.type in (open_write, unlink) and fd.name startswith "/app/config/"
+  output: "Sensitive configuration file modified (user=%user.name file=%fd.name command=%proc.cmdline)"
+  priority: CRITICAL
+  tags: [filesystem, custom]
+
+# ------------------
+# Flask-specifieke rules
+# ------------------
+
+- rule: Flask App Unexpected Child Process
+  desc: Detect unexpected process spawned by Flask application.
+  condition: |
+    container.image.repository contains "flask-app"
+    and not proc.name in (flask_allowed_procs)
+  output: "Unexpected process in Flask container (user=%user.name command=%proc.cmdline container=%container.id)"
+  priority: WARNING
+  tags: [container, flask, custom]
+
+- rule: Flask App File System Write outside allowed paths
+  desc: Flask app writing to unexpected locations.
+  condition: |
+    container.image.repository contains "flask-app"
+    and (file_open.flags contains O_WRONLY or file_open.flags contains O_RDWR)
+    and not (
+      fd.directory in (/tmp, /var/log, /app, /app/data)
+      or fd.name endswith "database.db"
+    )
+  output: "Flask app writing to unexpected location (user=%user.name command=%proc.cmdline file=%fd.name container=%container.id)"
+  priority: WARNING
+  tags: [filesystem, flask, custom]
+
+- rule: Flask App Network Activity on Unexpected Ports
+  desc: Flask app opening network connections to unexpected ports.
+  condition: |
+    container.image.repository contains "flask-app"
+    and (evt.type = connect or evt.type = sendto)
+    and not (
+      fd.lport in (5000, 80, 443)
+      and fd.sip in ("127.0.0.1", "::1")
+    )
+  output: "Flask app connecting to unexpected port (user=%user.name command=%proc.cmdline connection=%fd.name port=%fd.sport:%fd.lport container=%container.id)"
+  priority: WARNING
+  tags: [network, flask, custom]
+
+- rule: Flask App Shell Command Injection
+  desc: Detect potential command injection in Flask application.
+  condition: |
+    container.image.repository contains "flask-app"
+    and spawned_process
+    and proc.name in ("sh","bash")
+    and proc.pname = "python"
+    and not proc.cmdline startswith "sh -c /usr/local/bin/python"
+  output: "Potential command injection in Flask app (user=%user.name command=%proc.cmdline container=%container.id)"
+  priority: WARNING
+  tags: [command-injection, flask, custom]
