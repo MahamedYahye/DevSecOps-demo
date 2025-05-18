@@ -1,107 +1,18 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: kube-prometheus-stack
+  name: monitoring-stack
   namespace: argocd
-  finalizers:
-  - resources-finalizer.argocd.argoproj.io
 spec:
   project: default
   source:
-    chart: kube-prometheus-stack
-    repoURL: https://prometheus-community.github.io/helm-charts
-    targetRevision: "55.5.0"
-    helm:
-      values: |
-        # Global values
-        global:
-          rbac:
-            create: true
-            pspEnabled: false
-
-        # Grafana instellingen
-        grafana:
-          enabled: true
-          adminPassword: admin
-          persistence:
-            enabled: true
-            size: 10Gi
-            storageClassName: default  # AKS default storage class
-          service:
-            type: ClusterIP
-
-        # Prometheus instellingen
-        prometheus:
-          prometheusSpec:
-            retention: 10d
-            storageSpec:
-              volumeClaimTemplate:
-                spec:
-                  storageClassName: default  # AKS default storage class
-                  accessModes: ["ReadWriteOnce"]
-                  resources:
-                    requests:
-                      storage: 50Gi
-          service:
-            type: ClusterIP
-
-        # Alert Manager instellingen
-        alertmanager:
-          enabled: true
-          alertmanagerSpec:
-            storage:
-              volumeClaimTemplate:
-                spec:
-                  storageClassName: default  # AKS default storage class
-                  accessModes: ["ReadWriteOnce"]
-                  resources:
-                    requests:
-                      storage: 10Gi
-
-        # Kube State Metrics
-        kube-state-metrics:
-          enabled: true
-
-        # Node exporter
-        nodeExporter:
-          enabled: true
-
-        # Exporters - Behouden we allemaal ingeschakeld voor complete monitoring
-        kubeApiServer:
-          enabled: true
-        kubelet:
-          enabled: true
-        kubeControllerManager:
-          enabled: true
-        coreDns:
-          enabled: true
-        kubeDns:
-          enabled: false
-        kubeEtcd:
-          enabled: true
-        kubeScheduler:
-          enabled: true
-        kubeProxy:
-          enabled: true
-
-        # Admission webhooks - vaak problematisch met ArgoCD
-        admissionWebhooks:
-          enabled: false
-
+    repoURL: https://github.com/MahamedYahye/DevSecOps-demo.git  # Vervang met uw repo
+    path: argocd/monitoring
+    targetRevision: HEAD
   destination:
     server: https://kubernetes.default.svc
-    namespace: monitoring
-
+    namespace: argocd
   syncPolicy:
     automated:
       prune: true
       selfHeal: true
-    syncOptions:
-    - CreateNamespace=true
-    - ServerSideApply=true
-    retry:
-      limit: 5
-      backoff:
-        duration: 5s
-        factor: 2
-        maxDuration: 3m

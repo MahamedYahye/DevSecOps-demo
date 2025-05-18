@@ -1,0 +1,29 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: prometheus
+  namespace: argocd
+spec:
+  project: default
+  source:
+    chart: prometheus
+    repoURL: https://prometheus-community.github.io/helm-charts
+    targetRevision: "15.10.1" # Stabiele versie uit de repo
+    helm:
+      values: |
+        server:
+          persistentVolume:
+            enabled: true
+            size: 8Gi
+            storageClassName: default
+        alertmanager:
+          enabled: false  # Optioneel, om het lichter te maken
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+    - CreateNamespace=true
