@@ -3,6 +3,8 @@ kind: Application
 metadata:
   name: prometheus
   namespace: argocd
+  finalizers:
+  - resources-finalizer.argocd.argoproj.io
 spec:
   project: default
   source:
@@ -10,14 +12,26 @@ spec:
     repoURL: https://prometheus-community.github.io/helm-charts
     targetRevision: "15.10.1" # Stabiele versie uit de repo
     helm:
-      values: |
+      values: |+
         server:
           persistentVolume:
             enabled: true
             size: 8Gi
             storageClassName: default
+
         alertmanager:
           enabled: false  # Optioneel, om het lichter te maken
+          
+        # Resource beperkingen voor server
+        server:
+          resources:
+            limits:
+              cpu: 500m
+              memory: 512Mi
+            requests:
+              cpu: 200m
+              memory: 256Mi
+              
   destination:
     server: https://kubernetes.default.svc
     namespace: monitoring

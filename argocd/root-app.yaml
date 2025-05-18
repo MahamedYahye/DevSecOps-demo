@@ -1,15 +1,13 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: monitoring-stack
+  name: root-app
   namespace: argocd
-  finalizers:
-  - resources-finalizer.argocd.argoproj.io
 spec:
   project: default
   source:
     repoURL: https://github.com/MahamedYahye/DevSecOps-demo.git # Vervang met uw repo URL
-    path: argocd/monitoring
+    path: argocd/applications
     targetRevision: HEAD
   destination:
     server: https://kubernetes.default.svc
