@@ -1,11 +1,4 @@
 falco:
   customRules:
     custom-rules.yaml: |-
-      {{ .Files.Get "custom_rules.yaml" | indent 8 }}
-  
-  # Teams notificatie configuratie
-  programOutput:
-    enabled: true
-    keepAlive: false
-    program: >-
-      sh -c "webhook='https://prod-222.westeurope.logic.azure.com:443/workflows/86d99bb1892b45b8afd6e534da4aecd1/triggers/manual/paths/invoke?api-version=2016-06-01&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=zVFiizWlLD4Skk55W-3qAI7jGi-2jPLa0zG3Ovc2Gqk' && curl -H 'Content-Type: application/json' -d '{\"@type\":\"MessageCard\",\"@context\":\"http://schema.org/extensions\",\"themeColor\":\"0076D7\",\"summary\":\"[FALCO] Security Alert\",\"sections\":[{\"activityTitle\":\"🛡️ [FALCO] Security Alert\",\"activitySubtitle\":\"%time%\",\"facts\":[{\"name\":\"Rule\",\"value\":\"%rule%\"},{\"name\":\"Priority\",\"value\":\"%priority%\"},{\"name\":\"Container\",\"value\":\"%container.name%\"},{\"name\":\"Namespace\",\"value\":\"%k8s.ns.name%\"},{\"name\":\"Image\",\"value\":\"%container.image.repository%:%container.image.tag%\"}],\"text\":\"%output%\"}]}' $webhook"
+      {{ .Files.Get "custom_rules.yaml" | indent 8 }
