@@ -2,9 +2,11 @@ from flask import Flask, request, render_template, redirect, session, jsonify
 import sqlite3
 import os
 import time
+from prometheus_flask_exporter import PrometheusMetrics
 
 app = Flask(__name__)
 app.secret_key = "zeer_zwakke_sleutel"  # Duidelijkere zwakke sleutel
+metrics = PrometheusMetrics(app)
 
 # Hardcoded API-sleutel
 API_KEY = "abcdef1234567890"
