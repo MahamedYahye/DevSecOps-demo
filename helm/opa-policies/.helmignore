@@ -1,0 +1,7 @@
+.venv/
+venv/
+path/to/venv/
+*.pyc
+__pycache__/
+.git/
+.DS_Store

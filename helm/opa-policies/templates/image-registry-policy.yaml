@@ -44,7 +44,7 @@ spec:
     kinds:
       - apiGroups: [""]
         kinds: ["Pod"]
-    namespaces: 
+    namespaces:
     {{- range .Values.imagePolicy.targetNamespaces }}
       - {{ . | quote }}
     {{- end }}
