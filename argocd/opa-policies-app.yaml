@@ -1,0 +1,23 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: opa-policies
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/MahamedYahye/DevSecOps-demo.git
+    targetRevision: main
+    path: helm/opa-policies
+    helm:
+      valueFiles:
+      - values.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: gatekeeper-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+    - CreateNamespace=true
