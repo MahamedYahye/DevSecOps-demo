@@ -1,0 +1,6 @@
+apiVersion: v2
+name: opa-policies
+description: OPA/Gatekeeper security policies for DevSecOps compliance
+type: application
+version: 0.1.0
+appVersion: "1.0"
