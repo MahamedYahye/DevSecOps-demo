@@ -176,5 +176,5 @@ spec:
       - {{ . | quote }}
     {{- end }}
   parameters:
-    minimumTlsVersion: {{ .Values.tlsPolicy.minimumTlsVersion }}
+    minimumTlsVersion: {{ .Values.tlsPolicy.minimumTlsVersion | quote }}
 {{- end }}
