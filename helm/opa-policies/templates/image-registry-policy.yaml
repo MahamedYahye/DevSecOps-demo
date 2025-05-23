@@ -4,7 +4,7 @@ kind: ConstraintTemplate
 metadata:
   name: allowedregistries
   annotations:
-    argocd.argoproj.io/sync-wave: "-1"  # EERST deployen
+    argocd.argoproj.io/sync-wave: "-1"
 spec:
   crd:
     spec:
@@ -41,7 +41,7 @@ kind: AllowedRegistries
 metadata:
   name: flask-app-allowed-registries
   annotations:
-    argocd.argoproj.io/sync-wave: "1"  # DAARNA deployen
+    argocd.argoproj.io/sync-wave: "1"
 spec:
   enforcementAction: {{ .Values.imagePolicy.enforcement }}
   match:
