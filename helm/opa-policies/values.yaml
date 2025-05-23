@@ -5,7 +5,7 @@ fullnameOverride: ""
 # Image Registry Policy
 imagePolicy:
   enabled: true
-  enforcement: "warn" # warn or deny
+  enforcement: "warn"
   allowedRegistries:
   - "devsecops1.azurecr.io/"
   targetNamespaces:
@@ -14,7 +14,7 @@ imagePolicy:
 # TLS Policy  
 tlsPolicy:
   enabled: true
-  enforcement: "warn" # warn or deny
+  enforcement: "warn"
   minimumTlsVersion: "1.2"
   targetNamespaces:
   - "flask-app"
