@@ -1,3 +1,64 @@
+# {{- if .Values.imagePolicy.enabled }}
+# apiVersion: templates.gatekeeper.sh/v1beta1
+# kind: ConstraintTemplate
+# metadata:
+#   name: allowedregistries
+#   annotations:
+#     argocd.argoproj.io/sync-wave: "0"
+# spec:
+#   crd:
+#     spec:
+#       names:
+#         kind: AllowedRegistries
+#       validation:
+#         openAPIV3Schema:
+#           type: object
+#           properties:
+#             registries:
+#               type: array
+#               items:
+#                 type: string
+#   targets:
+#     - target: admission.k8s.gatekeeper.sh
+#       rego: |
+#         package allowedregistries
+        
+#         violation[{"msg": msg}] {
+#           input.review.object.kind == "Pod"
+#           image := input.review.object.spec.containers[_].image
+#           not image_allowed(image)
+#           msg := sprintf("Image '%v' is not from allowed registry. Only images from %v are permitted", [image, input.parameters.registries])
+#         }
+        
+#         image_allowed(image) {
+#           registries := input.parameters.registries
+#           registry := registries[_]
+#           startswith(image, registry)
+#         }
+# ---
+# apiVersion: constraints.gatekeeper.sh/v1beta1
+# kind: AllowedRegistries
+# metadata:
+#   name: flask-app-allowed-registries
+#   annotations:
+#     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+#     argocd.argoproj.io/sync-wave: "1"
+# spec:
+#   enforcementAction: {{ .Values.imagePolicy.enforcement }}
+#   match:
+#     kinds:
+#       - apiGroups: [""]
+#         kinds: ["Pod"]
+#     namespaces:
+#     {{- range .Values.imagePolicy.targetNamespaces }}
+#       - {{ . | quote }}
+#     {{- end }}
+#   parameters:
+#     registries:
+#     {{- range .Values.imagePolicy.allowedRegistries }}
+#       - {{ . | quote }}
+#     {{- end }}
+# {{- end }}
 {{- if .Values.imagePolicy.enabled }}
 apiVersion: templates.gatekeeper.sh/v1beta1
 kind: ConstraintTemplate
@@ -58,4 +119,62 @@ spec:
     {{- range .Values.imagePolicy.allowedRegistries }}
       - {{ . | quote }}
     {{- end }}
+{{- end }}
+---
+{{- if .Values.tlsPolicy.enabled }}
+apiVersion: templates.gatekeeper.sh/v1beta1
+kind: ConstraintTemplate
+metadata:
+  name: httpsonly
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  crd:
+    spec:
+      names:
+        kind: HttpsOnly
+      validation:
+        openAPIV3Schema:
+          type: object
+          properties:
+            minimumTlsVersion:
+              type: string
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package httpsonly
+        
+        violation[{"msg": msg}] {
+          input.review.object.kind == "Ingress"
+          not input.review.object.spec.tls
+          msg := "Ingress must use HTTPS/TLS. HTTP traffic is not allowed for security compliance."
+        }
+        
+        violation[{"msg": msg}] {
+          input.review.object.kind == "Service"
+          input.review.object.spec.ports[_].port == 80
+          msg := "Service exposes HTTP port 80. Consider using HTTPS/TLS for secure communication."
+        }
+---
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: HttpsOnly
+metadata:
+  name: flask-app-https-only
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  enforcementAction: {{ .Values.tlsPolicy.enforcement }}
+  match:
+    kinds:
+      - apiGroups: ["networking.k8s.io"]
+        kinds: ["Ingress"]
+      - apiGroups: [""]
+        kinds: ["Service"]
+    namespaces:
+    {{- range .Values.tlsPolicy.targetNamespaces }}
+      - {{ . | quote }}
+    {{- end }}
+  parameters:
+    minimumTlsVersion: {{ .Values.tlsPolicy.minimumTlsVersion }}
 {{- end }}
