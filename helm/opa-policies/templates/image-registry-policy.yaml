@@ -3,6 +3,8 @@ apiVersion: templates.gatekeeper.sh/v1beta1
 kind: ConstraintTemplate
 metadata:
   name: allowedregistries
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"  # EERST deployen
 spec:
   crd:
     spec:
@@ -38,6 +40,8 @@ apiVersion: constraints.gatekeeper.sh/v1beta1
 kind: AllowedRegistries
 metadata:
   name: flask-app-allowed-registries
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"  # DAARNA deployen
 spec:
   enforcementAction: {{ .Values.imagePolicy.enforcement }}
   match:
