@@ -1,47 +1,8 @@
 {{- if .Values.imagePolicy.enabled }}
-apiVersion: templates.gatekeeper.sh/v1beta1
-kind: ConstraintTemplate
-metadata:
-  name: allowedregistries
-  annotations:
-    argocd.argoproj.io/sync-wave: "-1"
-spec:
-  crd:
-    spec:
-      names:
-        kind: AllowedRegistries
-      validation:
-        openAPIV3Schema:
-          type: object
-          properties:
-            registries:
-              type: array
-              items:
-                type: string
-  targets:
-    - target: admission.k8s.gatekeeper.sh
-      rego: |
-        package allowedregistries
-        
-        violation[{"msg": msg}] {
-          input.review.object.kind == "Pod"
-          image := input.review.object.spec.containers[_].image
-          not image_allowed(image)
-          msg := sprintf("Image '%v' is not from allowed registry. Only images from %v are permitted", [image, input.parameters.registries])
-        }
-        
-        image_allowed(image) {
-          registries := input.parameters.registries
-          registry := registries[_]
-          startswith(image, registry)
-        }
----
 apiVersion: constraints.gatekeeper.sh/v1beta1
 kind: AllowedRegistries
 metadata:
   name: flask-app-allowed-registries
-  annotations:
-    argocd.argoproj.io/sync-wave: "1"
 spec:
   enforcementAction: {{ .Values.imagePolicy.enforcement }}
   match:
