@@ -3,7 +3,7 @@ name: Build, Scan and Push
 on:
   workflow_dispatch:  # Alleen handmatig triggeren
   workflow_run:
-    workflows: ["Modular SAST Workflow"]
+    workflows: ["SAST Security Pipeline"]
     types:
       - completed
     branches: [main]
