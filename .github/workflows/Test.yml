@@ -211,3 +211,94 @@
           
 #           # Bandit
 #           upload_scan_to_defectdojo "bandit-results/results.json" "Bandit Scan" "Bandit"
+
+
+# .github/workflows/checkov-test.yml
+name: Checkov Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:  # Manual trigger voor testing
+
+jobs:
+  checkov-test:
+    name: Checkov Security Test
+    runs-on: ubuntu-latest  # Start met hosted runner voor test
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Run Checkov Scan
+      uses: bridgecrewio/checkov-action@master
+      with:
+        directory: .
+        framework: kubernetes,dockerfile,yaml,secrets
+        output_format: cli,json,sarif
+        output_file_path: checkov-results
+        soft_fail: true
+        compact: true
+        
+    - name: Display Checkov Results Summary
+      if: always()
+      run: |
+        echo "=== Checkov Results Summary ==="
+        
+        if [ -f checkov-results/results_json.json ]; then
+          echo "✅ JSON report generated"
+          
+          # Show summary stats
+          PASSED=$(jq '.summary.passed // 0' checkov-results/results_json.json)
+          FAILED=$(jq '.summary.failed // 0' checkov-results/results_json.json)
+          SKIPPED=$(jq '.summary.skipped // 0' checkov-results/results_json.json)
+          
+          echo "📈 Results:"
+          echo "  ✅ Passed: $PASSED"
+          echo "  ❌ Failed: $FAILED" 
+          echo "  ⏭️  Skipped: $SKIPPED"
+          
+          # Show top 5 failed checks
+          if [ "$FAILED" -gt 0 ]; then
+            echo ""
+            echo "🔍 Top Failed Checks:"
+            jq -r '.results.failed_checks[] | "  - \(.severity): \(.check_name) in \(.file_path)"' checkov-results/results_json.json | head -n 5
+          fi
+        else
+          echo "⚠️ No JSON report found"
+        fi
+        
+        if [ -f checkov-results/results_sarif.sarif ]; then
+          echo "✅ SARIF report generated"
+        else
+          echo "⚠️ No SARIF report found"
+        fi
+        
+    - name: Upload Checkov Results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: checkov-test-results
+        path: checkov-results/
+        retention-days: 7
+        
+    - name: Upload SARIF to GitHub Security
+      if: always() && github.event_name != 'pull_request'
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: checkov-results/results_sarif.sarif
+        
+    - name: Test Summary
+      if: always()
+      run: |
+        echo ""
+        echo "🎉 Checkov test completed!"
+        echo "📁 Results uploaded as artifacts"
+        echo "🔒 SARIF uploaded to Security tab (if on main branch)"
+        echo ""
+        echo "Next steps:"
+        echo "1. Check the Security tab for findings"
+        echo "2. Download artifacts to see detailed reports"  
+        echo "3. If satisfied, integrate into main security pipeline"
