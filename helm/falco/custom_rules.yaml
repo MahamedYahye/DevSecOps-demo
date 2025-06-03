@@ -19,43 +19,34 @@
 - rule: Outbound connection to untrusted IP
   desc: Detect outbound connections to IP addresses not listed as trusted
   condition: >
-    outbound and
-    not trusted_ip_addresses and
-    not fd.sip in ("127.0.0.1", "::1")
+    outbound and not trusted_ip_addresses and not fd.sip in ("127.0.0.1", "::1")
   output: "Untrusted outbound connection detected (user=%user.name container=%container.id destination=%fd.sip)"
   priority: CRITICAL
-  tags: [network, custom]
+  tags: [ network, custom ]
 
 - rule: Unauthorized shell in container
   desc: Detect and respond to unauthorized shell access in containers
   condition: >
-    container and
-    spawned_process and
-    proc.name in (bash, sh, zsh) and
-    not whitelisted_container_images
+    container and spawned_process and proc.name in (bash, sh, zsh) and not whitelisted_container_images
   output: "Unauthorized shell access detected (user=%user.name container=%container.id image=%container.image.repository:%container.image.tag)"
   priority: CRITICAL
-  tags: [container, custom]
+  tags: [ container, custom ]
 
 - rule: Privilege escalation to root
   desc: Detect any attempt to switch to the root user within a container
   condition: >
-    container and
-    spawned_process and
-    proc.euid=0 and
-    proc.euid != user.uid
+    container and spawned_process and proc.euid=0 and proc.euid != user.uid
   output: "Privilege escalation detected (user=%user.name container=%container.id command=%proc.cmdline)"
   priority: CRITICAL
-  tags: [container, custom]
+  tags: [ container, custom ]
 
 - rule: Modify sensitive configuration files
   desc: Detect modification of sensitive configuration files
   condition: >
-    open_write and
-    fd.name pmatch "/app/config/*"
+    open_write and fd.name pmatch "/app/config/*"
   output: "Sensitive configuration file modified (user=%user.name file=%fd.name command=%proc.cmdline)"
   priority: CRITICAL
-  tags: [filesystem, custom]
+  tags: [ filesystem, custom ]
 
 # ------------------
 # Flask-specifieke rules
@@ -64,50 +55,35 @@
 - rule: Flask App Unexpected Child Process
   desc: Detect unexpected process spawned by Flask application
   condition: >
-    container and
-    whitelisted_container_images and
-    spawned_process and
-    not flask_allowed_processes
+    container and whitelisted_container_images and spawned_process and not flask_allowed_processes
   output: "Unexpected process in Flask container (user=%user.name command=%proc.cmdline container=%container.id)"
   priority: WARNING
-  tags: [container, flask, custom]
+  tags: [ container, flask, custom ]
 
 - rule: Flask App File System Write outside allowed paths
   desc: Flask app writing to unexpected locations
   condition: >
-    container and
-    whitelisted_container_images and
-    open_write and
-    not (fd.name pmatch "/tmp/*" or 
+    container and whitelisted_container_images and open_write and not (fd.name pmatch "/tmp/*" or 
          fd.name pmatch "/var/log/*" or 
          fd.name pmatch "/app/*" or 
          fd.name pmatch "/app/data/*" or 
          fd.name endswith "database.db")
   output: "Flask app writing to unexpected location (user=%user.name command=%proc.cmdline file=%fd.name container=%container.id)"
   priority: WARNING
-  tags: [filesystem, flask, custom]
+  tags: [ filesystem, flask, custom ]
 
 - rule: Flask App Network Activity on Unexpected Ports
   desc: Flask app opening network connections to unexpected ports
   condition: >
-    container and
-    whitelisted_container_images and
-    (outbound or inbound) and
-    not fd.lport in (5000, 80, 443) and
-    not fd.sip in ("127.0.0.1", "::1")
+    container and whitelisted_container_images and (outbound or inbound) and not fd.lport in (5000, 80, 443) and not fd.sip in ("127.0.0.1", "::1")
   output: "Flask app connecting to unexpected port (user=%user.name command=%proc.cmdline connection=%fd.lip:%fd.lport port=%fd.lport container=%container.id)"
   priority: WARNING
-  tags: [network, flask, custom]
+  tags: [ network, flask, custom ]
 
 - rule: Flask App Shell Command Injection
   desc: Detect potential command injection in Flask application
   condition: >
-    container and
-    whitelisted_container_images and
-    spawned_process and
-    proc.name in (sh, bash) and
-    proc.pname=python and
-    not proc.cmdline startswith "sh -c /usr/local/bin/python"
+    container and whitelisted_container_images and spawned_process and proc.name in (sh, bash) and proc.pname=python and not proc.cmdline startswith "sh -c /usr/local/bin/python"
   output: "Potential command injection in Flask app (user=%user.name command=%proc.cmdline container=%container.id)"
   priority: WARNING
-  tags: [command-injection, flask, custom]
+  tags: [ command-injection, flask, custom ]

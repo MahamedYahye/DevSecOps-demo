@@ -1,534 +1,69 @@
-# # # name: OWASP ZAP Security Scan
 
-# # # on:
-# # #     workflow_dispatch:
-# # #     push:
-# # #       branches: [ main ]
-# # # jobs:
-# # #  zap-scan:
-# # #    runs-on: self-hosted
-
-# # #    steps:
-# # #    - name: Checkout code
-# # #      uses: actions/checkout@v4
-
-# # #    - name: Test URL connectivity
-# # #      run: |
-# # #        echo "Testing connection to target URL: http://localhost:8081"
-# # #        if curl -s --head --fail http://localhost:8081 > /dev/null; then
-# # #          echo "✅ Connection successful"
-# # #        else
-# # #          echo "❌ Connection failed - URL is not accessible"
-# # #          echo "Make sure port-forwarding is running with: kubectl port-forward service/flask-app 8081:80"
-# # #          exit 1
-# # #        fi
-
-# # #    - name: Run ZAP Scan
-# # #      run: |
-# # #        echo "Scanning target URL: http://host.docker.internal:8081"
-# # #        mkdir -p zap-report
-# # #        docker run --rm \
-# # #          -v "$(pwd)/zap-report:/zap/wrk" \
-# # #          zaproxy/zap-stable:latest \
-# # #          zap-baseline.py -t http://host.docker.internal:8081 -g gen.conf -r zap-report.html
-
-# # #    - name: Check ZAP result
-# # #      run: |
-# # #        if [ -f "zap-report/zap-report.html" ]; then
-# # #          echo "✅ ZAP scan complete. Results saved to zap-report directory."
-# # #          ls -la zap-report/
-# # #        else
-# # #          echo "❌ ZAP report not found. The scan might have failed."
-# # #          exit 1
-# # #        fi
-
-# # #    - name: Upload ZAP report
-# # #      if: always()  # Upload report even if previous steps failed
-# # #      uses: actions/upload-artifact@v4
-# # #      with:
-# # #        name: zap-report
-# # #        path: zap-report
-
-# # name: OWASP ZAP Security Scan
-
-# # on:
-# #   workflow_run:
-# #     workflows: ["Build, Scan and Upload"]
-# #     types:
-# #       - completed
-# #     branches: [main]
-
-# # jobs:
-# #   check_build_status:
-# #     name: Check Build Workflow Status
-# #     runs-on: self-hosted
-# #     steps:
-# #       - name: Check build workflow status
-# #         run: |
-# #           if [ "${{ github.event.workflow_run.conclusion }}" != "success" ]; then
-# #             echo "⛔ Previous build workflow did not succeed - aborting DAST scan"
-# #             exit 1
-# #           else
-# #             echo "✅ Previous build workflow succeeded - proceeding with DAST scan"
-# #           fi
-
-# #   wait_for_deployment:
-# #     name: Wait for Application Deployment
-# #     needs: [check_build_status]
-# #     runs-on: self-hosted
-# #     steps:
-# #       - name: Initial wait for Argo CD
-# #         run: |
-# #           echo "Waiting for Argo CD to process the new deployment..."
-# #           sleep 60  # Initial wait to give Argo CD time to start the deployment
-
-# #       - name: Verify application availability
-# #         run: |
-# #           MAX_RETRIES=5
-# #           RETRY_COUNT=0
-# #           SUCCESS_COUNT=0
-# #           REQUIRED_SUCCESSES=3
-
-# #           echo "Verifying application availability at http://localhost:8282"
-
-# #           while [ $RETRY_COUNT -lt $MAX_RETRIES ] && [ $SUCCESS_COUNT -lt $REQUIRED_SUCCESSES ]; do
-# #             RETRY_COUNT=$((RETRY_COUNT+1))
-
-# #             if curl -s --head --fail http://localhost:8282 > /dev/null; then
-# #               SUCCESS_COUNT=$((SUCCESS_COUNT+1))
-# #               echo "✅ Health check succeeded ($SUCCESS_COUNT/$REQUIRED_SUCCESSES)"
-# #             else
-# #               SUCCESS_COUNT=0
-# #               echo "❌ Health check failed, resetting success count"
-# #             fi
-
-# #             if [ $SUCCESS_COUNT -lt $REQUIRED_SUCCESSES ]; then
-# #               echo "Waiting 30 seconds before next check..."
-# #               sleep 30
-# #             fi
-# #           done
-
-# #           if [ $SUCCESS_COUNT -ge $REQUIRED_SUCCESSES ]; then
-# #             echo "✅ Application deployment verified! Ready for security scan."
-# #           else
-# #             echo "❌ Could not verify application deployment after maximum attempts"
-# #             exit 1
-# #           fi
-
-# #   zap-scan:
-# #     name: ZAP Security Scan
-# #     needs: [wait_for_deployment]
-# #     runs-on: self-hosted
-# #     steps:
-# #     - name: Checkout code
-# #       uses: actions/checkout@v4
-
-# #     - name: Prepare report directory
-# #       run: |
-# #         mkdir -p zap-report
-
-# #     - name: Run ZAP Scan
-# #       id: zap
-# #       continue-on-error: true
-# #       run: |
-# #         echo "Scanning target URL: http://host.docker.internal:8282"
-# #         docker run --rm \
-# #           -v "$(pwd)/zap-report:/zap/wrk" \
-# #           zaproxy/zap-stable:latest \
-# #           zap-baseline.py -t http://host.docker.internal:8282 -r zap-report.html -x zap-report.xml
-
-# #         # Status code opslaan
-# #         echo "zap_status=$?" >> $GITHUB_OUTPUT
-
-# #     - name: Check for critical vulnerabilities
-# #       continue-on-error: true  # Deze stap gaat altijd door, zelfs bij hoge risico's
-# #       run: |
-# #         if [ -f "zap-report/zap-report.html" ]; then
-# #           echo "Checking for critical vulnerabilities in scan results..."
-# #           # Tel alleen kritieke kwetsbaarheden (high/critical)
-# #           HIGH_COUNT=$(grep -c "High" zap-report/zap-report.html || echo 0)
-
-# #           echo "Number of HIGH risk vulnerabilities: $HIGH_COUNT"
-
-# #           if [ "$HIGH_COUNT" -gt 0 ]; then
-# #             echo "⚠️ WAARSCHUWING: $HIGH_COUNT kritieke kwetsbaarheden gevonden, maar doorgaan met pipeline"
-# #           else
-# #             echo "✅ No critical vulnerabilities found in security scan!"
-# #           fi
-# #         else
-# #           echo "❌ ZAP report not found. The scan might have failed."
-# #           if [ "${{ steps.zap.outputs.zap_status }}" != "0" ]; then
-# #             echo "ZAP scan exited with status code ${{ steps.zap.outputs.zap_status }}"
-# #           fi
-# #         fi
-
-# #     - name: Upload ZAP report
-# #       if: always()  # Upload report even if previous steps failed
-# #       uses: actions/upload-artifact@v4
-# #       with:
-# #         name: zap-report
-# #         path: zap-report
-
-# #   upload_to_defectdojo:
-# #     name: Upload DAST Results to DefectDojo
-# #     needs: [zap-scan]
-# #     runs-on: self-hosted
-# #     if: always()  # Altijd uitvoeren, zelfs als zap-scan faalde
-# #     steps:
-# #       - uses: actions/download-artifact@v4
-# #         with:
-# #           name: zap-report
-# #           path: zap-results
-
-# #       - name: Validate Results
-# #         run: |
-# #           echo "=== Validating ZAP Scan Output ==="
-# #           if [ -f zap-results/zap-report.xml ]; then
-# #             echo "ZAP XML Report: ✅ OK"
-# #           else
-# #             echo "ZAP XML Report: ❌ Missing"
-# #             exit 1
-# #           fi
-
-# #       - name: Upload to DefectDojo
-# #         env:
-# #           DEFECTDOJO_URL: ${{ secrets.DEFECTDOJO_URL }}
-# #           DEFECTDOJO_API_KEY: ${{ secrets.DEFECTDOJO_API_KEY }}
-# #           DEFECTDOJO_ENGAGEMENT_ID: ${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}
-# #         run: |
-# #           SCAN_DATE=$(date +%Y-%m-%d)
-
-# #           HTTP_CODE=$(curl -s -o response.txt -w "%{http_code}" \
-# #             -X POST "$DEFECTDOJO_URL/api/v2/import-scan/" \
-# #             -H "Authorization: Token $DEFECTDOJO_API_KEY" \
-# #             -F "scan_date=$SCAN_DATE" \
-# #             -F "scan_type=ZAP Scan" \
-# #             -F "close_old_findings=true" \
-# #             -F "deduplication_on_engagement=true" \
-# #             -F "engagement=$DEFECTDOJO_ENGAGEMENT_ID" \
-# #             -F "file=@zap-results/zap-report.xml")
-
-# #           if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
-# #             echo "✅ Successfully uploaded ZAP scan results to DefectDojo"
-# #           else
-# #             echo "❌ Upload failed with HTTP code $HTTP_CODE"
-# #             cat response.txt
-# #             exit 1
-# #           fi
-
-# # name: OWASP ZAP Security Scan
-
-# # on:
-# #   workflow_run:
-# #     workflows: ["Build, Scan and Push"]
-# #     types:
-# #       - completed
-# #     branches: [main]
-
-# # jobs:
-# #   check_build_status:
-# #     name: Check Build Workflow Status
-# #     runs-on: self-hosted
-# #     steps:
-# #       - name: Check build workflow status
-# #         run: |
-# #           if [ "${{ github.event.workflow_run.conclusion }}" != "success" ]; then
-# #             echo "⛔ Previous build workflow did not succeed - aborting DAST scan"
-# #             exit 1
-# #           else
-# #             echo "✅ Previous build workflow succeeded - proceeding with DAST scan"
-# #           fi
-
-# #   zap-scan:
-# #     name: ZAP Security Scan
-# #     needs: [check_build_status]
-# #     runs-on: self-hosted
-# #     steps:
-# #     - name: Checkout code
-# #       uses: actions/checkout@v4
-
-# #     - name: Prepare report directory
-# #       run: |
-# #         mkdir -p zap-report
-
-# #     - name: Run ZAP Scan
-# #       id: zap
-# #       continue-on-error: true
-# #       run: |
-# #         # Aangepast van host.docker.internal naar de URL van je app
-# #         # Je moet de URL aanpassen naar waar je app daadwerkelijk bereikbaar is
-# #         echo "Scanning target URL: http://localhost:8888"  # Vervang door je echte app URL
-# #         docker run --rm \
-# #           -v "$(pwd)/zap-report:/zap/wrk" \
-# #           zaproxy/zap-stable:latest \
-# #           zap-baseline.py -t http://localhost:8888 -r zap-report.html -x zap-report.xml  # Vervang URL
-
-# #         # Status code opslaan
-# #         echo "zap_status=$?" >> $GITHUB_OUTPUT
-
-# #     - name: Check for critical vulnerabilities
-# #       continue-on-error: true
-# #       run: |
-# #         if [ -f "zap-report/zap-report.html" ]; then
-# #           echo "Checking for critical vulnerabilities in scan results..."
-# #           # Tel alleen kritieke kwetsbaarheden (high/critical)
-# #           HIGH_COUNT=$(grep -c "High" zap-report/zap-report.html || echo 0)
-
-# #           echo "Number of HIGH risk vulnerabilities: $HIGH_COUNT"
-
-# #           if [ "$HIGH_COUNT" -gt 0 ]; then
-# #             echo "⚠️ WAARSCHUWING: $HIGH_COUNT kritieke kwetsbaarheden gevonden, maar doorgaan met pipeline"
-# #           else
-# #             echo "✅ No critical vulnerabilities found in security scan!"
-# #           fi
-# #         else
-# #           echo "❌ ZAP report not found. The scan might have failed."
-# #           if [ "${{ steps.zap.outputs.zap_status }}" != "0" ]; then
-# #             echo "ZAP scan exited with status code ${{ steps.zap.outputs.zap_status }}"
-# #           fi
-# #         fi
-
-# #     - name: Upload ZAP report
-# #       if: always()
-# #       uses: actions/upload-artifact@v4
-# #       with:
-# #         name: zap-report
-# #         path: zap-report
-
-# #   upload_to_defectdojo:
-# #     name: Upload DAST Results to DefectDojo
-# #     needs: [zap-scan]
-# #     runs-on: ubuntu-latest
-# #     if: always()
-# #     steps:
-# #       - uses: actions/download-artifact@v3
-# #         with:
-# #           name: zap-report
-# #           path: zap-results
-
-# #       - name: Validate Results
-# #         run: |
-# #           echo "=== Validating ZAP Scan Output ==="
-# #           if [ -f zap-results/zap-report.xml ]; then
-# #             echo "ZAP XML Report: ✅ OK"
-# #           else
-# #             echo "ZAP XML Report: ❌ Missing"
-# #             exit 1
-# #           fi
-
-# #       - name: Upload to DefectDojo
-# #         env:
-# #           DEFECTDOJO_URL: ${{ secrets.DEFECTDOJO_URL }}
-# #           DEFECTDOJO_API_KEY: ${{ secrets.DEFECTDOJO_API_KEY }}
-# #           DEFECTDOJO_ENGAGEMENT_ID: ${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}
-# #         run: |
-# #           SCAN_DATE=$(date +%Y-%m-%d)
-
-# #           HTTP_CODE=$(curl -s -o response.txt -w "%{http_code}" \
-# #             -X POST "$DEFECTDOJO_URL/api/v2/import-scan/" \
-# #             -H "Authorization: Token $DEFECTDOJO_API_KEY" \
-# #             -F "scan_date=$SCAN_DATE" \
-# #             -F "scan_type=ZAP Scan" \
-# #             -F "close_old_findings=true" \
-# #             -F "deduplication_on_engagement=true" \
-# #             -F "engagement=$DEFECTDOJO_ENGAGEMENT_ID" \
-# #             -F "file=@zap-results/zap-report.xml")
-
-# #           if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
-# #             echo "✅ Successfully uploaded ZAP scan results to DefectDojo"
-# #           else
-# #             echo "❌ Upload failed with HTTP code $HTTP_CODE"
-# #             cat response.txt
-# #             exit 1
-# #           fi
-
-# # name: OWASP ZAP Security Scan
-
-# # on:
-# #   workflow_run:
-# #     workflows: ["Build, Scan and Push"]
-# #     types:
-# #       - completed
-# #     branches: [main]
-
-# # jobs:
-# #   check_build_status:
-# #     name: Check Build Workflow Status
-# #     runs-on: self-hosted
-# #     steps:
-# #       - name: Check build workflow status
-# #         run: |
-# #           if [ "${{ github.event.workflow_run.conclusion }}" != "success" ]; then
-# #             echo "⛔ Previous build workflow did not succeed - aborting DAST scan"
-# #             exit 1
-# #           else
-# #             echo "✅ Previous build workflow succeeded - proceeding with DAST scan"
-# #           fi
-
-# #   zap-scan:
-# #     name: ZAP Security Scan
-# #     needs: [check_build_status]
-# #     runs-on: self-hosted
-# #     steps:
-# #     - name: Checkout code
-# #       uses: actions/checkout@v4
-
-# #     - name: Prepare report directory
-# #       run: |
-# #         mkdir -p zap-report
-
-# #     - name: Run ZAP Scan
-# #       id: zap
-# #       continue-on-error: true
-# #       run: |
-# #         # Gebruik de correcte service naam en poort uit kubectl get services
-# #         SERVICE_NAME="flask-app"
-# #         SERVICE_PORT="80"
-
-# #         echo "Scanning target URL: http://${SERVICE_NAME}:${SERVICE_PORT}"
-# #         docker run --rm \
-# #           -v "$(pwd)/zap-report:/zap/wrk" \
-# #           zaproxy/zap-stable:latest \
-# #           zap-baseline.py -t http://${SERVICE_NAME}:${SERVICE_PORT} -r zap-report.html -x zap-report.xml
-
-# #         # Status code opslaan
-# #         echo "zap_status=$?" >> $GITHUB_OUTPUT
-
-# #     - name: Check for critical vulnerabilities
-# #       continue-on-error: true
-# #       run: |
-# #         if [ -f "zap-report/zap-report.html" ]; then
-# #           echo "Checking for critical vulnerabilities in scan results..."
-# #           # Tel alleen kritieke kwetsbaarheden (high/critical)
-# #           HIGH_COUNT=$(grep -c "High" zap-report/zap-report.html || echo 0)
-
-# #           echo "Number of HIGH risk vulnerabilities: $HIGH_COUNT"
-
-# #           if [ "$HIGH_COUNT" -gt 0 ]; then
-# #             echo "⚠️ WAARSCHUWING: $HIGH_COUNT kritieke kwetsbaarheden gevonden, maar doorgaan met pipeline"
-# #           else
-# #             echo "✅ No critical vulnerabilities found in security scan!"
-# #           fi
-# #         else
-# #           echo "❌ ZAP report not found. The scan might have failed."
-# #           if [ "${{ steps.zap.outputs.zap_status }}" != "0" ]; then
-# #             echo "ZAP scan exited with status code ${{ steps.zap.outputs.zap_status }}"
-# #           fi
-# #         fi
-
-# #     - name: Upload ZAP report
-# #       if: always()
-# #       uses: actions/upload-artifact@v4
-# #       with:
-# #         name: zap-report
-# #         path: zap-report
-
-# #   upload_to_defectdojo:
-# #     name: Upload DAST Results to DefectDojo
-# #     needs: [zap-scan]
-# #     runs-on: self-hosted
-# #     if: always()
-# #     steps:
-# #       - uses: actions/download-artifact@v3
-# #         with:
-# #           name: zap-report
-# #           path: zap-results
-
-# #       - name: Validate Results
-# #         run: |
-# #           echo "=== Validating ZAP Scan Output ==="
-# #           if [ -f zap-results/zap-report.xml ]; then
-# #             echo "ZAP XML Report: ✅ OK"
-# #           else
-# #             echo "ZAP XML Report: ❌ Missing"
-# #             exit 1
-# #           fi
-
-# #       - name: Upload to DefectDojo
-# #         env:
-# #           DEFECTDOJO_URL: ${{ secrets.DEFECTDOJO_URL }}
-# #           DEFECTDOJO_API_KEY: ${{ secrets.DEFECTDOJO_API_KEY }}
-# #           DEFECTDOJO_ENGAGEMENT_ID: ${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}
-# #         run: |
-# #           SCAN_DATE=$(date +%Y-%m-%d)
-
-# #           HTTP_CODE=$(curl -s -o response.txt -w "%{http_code}" \
-# #             -X POST "$DEFECTDOJO_URL/api/v2/import-scan/" \
-# #             -H "Authorization: Token $DEFECTDOJO_API_KEY" \
-# #             -F "scan_date=$SCAN_DATE" \
-# #             -F "scan_type=ZAP Scan" \
-# #             -F "close_old_findings=true" \
-# #             -F "deduplication_on_engagement=true" \
-# #             -F "engagement=$DEFECTDOJO_ENGAGEMENT_ID" \
-# #             -F "file=@zap-results/zap-report.xml")
-
-# #           if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
-# #             echo "✅ Successfully uploaded ZAP scan results to DefectDojo"
-# #           else
-# #             echo "❌ Upload failed with HTTP code $HTTP_CODE"
-# #             cat response.txt
-# #             exit 1
-# #           fi
-
-# name: DAST Scan Simple
-
-# on:
-#   workflow_run:
-#     workflows:
-#       - "Build, Scan and Push"
-#     types:
-#       - completed
-
-# jobs:
-#   dast-scan:
-#     if: ${{ github.event.workflow_run.conclusion == 'success' }}
-#     runs-on: self-hosted
-
-#     steps:
-#       - name: Checkout repository
-#         uses: actions/checkout@v4
-
-#       - name: Prepare directories
-#         run: |
-#           mkdir -p reports zap-wrk zap-home
-
-#       - name: Wait for service
-#         run: |
-#           echo "Wachten tot app op poort 8888…"
-#           until curl -f http://localhost:8888; do
-#             echo "…nog niet bereikbaar, 2s wachten"
-#             sleep 2
-#           done
-
-#       - name: Run OWASP ZAP baseline scan
-#         run: |
-#           # Kies juiste netwerkflags en URL per OS
-#           if [ "$(uname)" = "Linux" ]; then
-#             DOCKER_NET="--network host"
-#             TARGET="http://localhost:8888"
-#           else
-#             DOCKER_NET="--add-host host.docker.internal:host-gateway"
-#             TARGET="http://host.docker.internal:8888"
-#           fi
-#           echo "ZAP scant op $TARGET"
-#           docker run --rm \
-#             $DOCKER_NET \
-#             -v "${{ github.workspace }}/reports":/zap/reports \
-#             -v "${{ github.workspace }}/zap-wrk":/zap/wrk \
-#             -v "${{ github.workspace }}/zap-home":/home/zap \
-#             zaproxy/zap-stable:latest \
-#             zap-baseline.py \
-#               -t $TARGET \
-#               -r /zap/reports/dast-report.html \
-#               -J /zap/reports/dast-report.json \
-#               -d \
-#               -m 2 \
-#               -T 5 \
-#               -I
-
-#       - name: Upload DAST report
-#         if: ${{ always() }}
-#         uses: actions/upload-artifact@v4
-#         with:
-#           name: dast-report
-#           path: reports/
+name: DevSecOps DAST Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:  # Voor handmatig starten
+
+jobs:
+  dast-security-scan:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup kubectl
+      run: |
+        mkdir -p ~/.kube
+        echo "${{ secrets.KUBECONFIG }}" | base64 -d > ~/.kube/config
+        chmod 600 ~/.kube/config
+
+    - name: Test kubectl connection
+      run: |
+        kubectl get nodes
+        kubectl get pods -n flask-app
+
+    - name: Wait for Flask app to be ready
+      run: |
+        kubectl wait --for=condition=available deployment/flask-app -n flask-app --timeout=300s
+        echo "Flask app is ready for scanning"
+
+    - name: Run OWASP ZAP DAST scan
+      run: |
+        echo "Starting DAST security scan..."
+        kubectl run zap-scan-${{ github.run_id }} \
+          --image=owasp/zap2docker-stable \
+          --rm -i --restart=Never \
+          -n default \
+          -- zap-baseline.py \
+            -t http://flask-app.flask-app.svc.cluster.local:80 \
+            -r zap-report.html \
+            -w zap-report.md \
+            || SCAN_EXIT_CODE=$?
+
+    - name: Process DAST results
+      run: |
+        echo "DAST scan completed with exit code: ${SCAN_EXIT_CODE:-0}"
+        
+        if [ "${SCAN_EXIT_CODE:-0}" -eq 2 ]; then
+          echo "❌ CRITICAL: High-risk vulnerabilities found!"
+          echo "::error::DAST scan found critical security vulnerabilities"
+          exit 1
+        elif [ "${SCAN_EXIT_CODE:-0}" -eq 1 ]; then
+          echo "⚠️ WARNING: Medium-risk vulnerabilities found"
+          echo "::warning::DAST scan found medium-risk security issues"
+          echo "Continuing pipeline with warning..."
+        else
+          echo "✅ SUCCESS: No critical vulnerabilities found"
+          echo "DAST security scan passed"
+        fi
+
+    - name: Security scan complete
+      run: |
+        echo "🔒 DevSecOps DAST scan completed"
+        echo "Your Flask app has been scanned for security vulnerabilities"
+        echo "Pipeline can continue to next stages..."
