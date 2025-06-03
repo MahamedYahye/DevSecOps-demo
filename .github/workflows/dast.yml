@@ -101,18 +101,75 @@ jobs:
         kubectl wait --for=condition=available deployment/flask-app -n flask-app --timeout=300s
         echo "Flask app is ready for scanning"
 
-    - name: Run OWASP ZAP DAST scan
+    - name: Run OWASP ZAP DAST scan using Job
       run: |
-        echo "Starting DAST security scan..."
-        kubectl run zap-scan-${{ github.run_id }} \
-          --image=devsecops1.azurecr.io/zap-stable:latest \
-          --rm -i --restart=Never \
-          -n default \
-          -- zap-baseline.py \
-            -t http://flask-app.flask-app.svc.cluster.local:80 \
-            -r zap-report.html \
-            -w zap-report.md \
-            || SCAN_EXIT_CODE=$?
+        echo "Starting DAST security scan using Kubernetes Job..."
+        
+        # Create ZAP scan job
+        cat <<EOF | kubectl apply -f -
+        apiVersion: batch/v1
+        kind: Job
+        metadata:
+          name: zap-scan-${{ github.run_id }}
+          namespace: flask-app
+        spec:
+          template:
+            spec:
+              containers:
+              - name: zap-scanner
+                image: zaproxy/zap-stable
+                command: ["zap-baseline.py"]
+                args: [
+                  "-t", "http://flask-app.flask-app.svc.cluster.local:80",
+                  "-J", "/zap/wrk/zap-report.json",
+                  "-r", "/zap/wrk/zap-report.html",
+                  "-x", "/zap/wrk/zap-report.xml",
+                  "-I"
+                ]
+                volumeMounts:
+                - name: scan-results
+                  mountPath: /zap/wrk
+              volumes:
+              - name: scan-results
+                emptyDir: {}
+              restartPolicy: Never
+          backoffLimit: 1
+        EOF
+        
+        echo "ZAP Job created, waiting for completion..."
+        
+        # Wait for job to complete (max 10 minutes)
+        kubectl wait --for=condition=complete job/zap-scan-${{ github.run_id }} -n flask-app --timeout=600s
+        
+        echo "ZAP scan completed!"
+
+    - name: Get ZAP scan results
+      run: |
+        echo ""
+        echo "=== ZAP SECURITY SCAN RESULTS ==="
+        kubectl logs job/zap-scan-${{ github.run_id }} -n flask-app
+        
+        # Extract security summary
+        LOGS=$(kubectl logs job/zap-scan-${{ github.run_id }} -n flask-app)
+        echo ""
+        echo "=== SECURITY SUMMARY ==="
+        
+        # Check for failures and warnings
+        if echo "$LOGS" | grep -q "FAIL-NEW:"; then
+          FAIL_COUNT=$(echo "$LOGS" | grep "FAIL-NEW:" | tail -1 | awk '{print $2}')
+          echo "❌ Critical vulnerabilities found: $FAIL_COUNT"
+          echo "SCAN_EXIT_CODE=2" >> $GITHUB_ENV
+        elif echo "$LOGS" | grep -q "WARN-NEW:"; then
+          WARN_COUNT=$(echo "$LOGS" | grep "WARN-NEW:" | tail -1 | awk '{print $4}')
+          echo "⚠️ Medium-risk warnings found: $WARN_COUNT"
+          echo "SCAN_EXIT_CODE=1" >> $GITHUB_ENV
+        else
+          echo "✅ No critical vulnerabilities found"
+          echo "SCAN_EXIT_CODE=0" >> $GITHUB_ENV
+        fi
+        
+        # Cleanup job
+        kubectl delete job zap-scan-${{ github.run_id }} -n flask-app
 
     - name: Process DAST results
       run: |
