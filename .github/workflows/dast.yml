@@ -1,4 +1,73 @@
 
+# name: DevSecOps DAST Pipeline
+
+# on:
+#   push:
+#     branches: [ main ]
+#   pull_request:
+#     branches: [ main ]
+#   workflow_dispatch:  # Voor handmatig starten
+
+# jobs:
+#   dast-security-scan:
+#     runs-on: ubuntu-latest
+    
+#     steps:
+#     - name: Checkout code
+#       uses: actions/checkout@v4
+
+#     - name: Setup kubectl
+#       run: |
+#         mkdir -p ~/.kube
+#         echo "${{ secrets.KUBECONFIG }}" | base64 -d > ~/.kube/config
+#         chmod 600 ~/.kube/config
+
+#     - name: Test kubectl connection
+#       run: |
+#         kubectl get nodes
+#         kubectl get pods -n flask-app
+
+#     - name: Wait for Flask app to be ready
+#       run: |
+#         kubectl wait --for=condition=available deployment/flask-app -n flask-app --timeout=300s
+#         echo "Flask app is ready for scanning"
+
+#     - name: Run OWASP ZAP DAST scan
+#       run: |
+#         echo "Starting DAST security scan..."
+#         kubectl run zap-scan-${{ github.run_id }} \
+#           --image=owasp/zap2docker-stable \
+#           --rm -i --restart=Never \
+#           -n default \
+#           -- zap-baseline.py \
+#             -t http://flask-app.flask-app.svc.cluster.local:80 \
+#             -r zap-report.html \
+#             -w zap-report.md \
+#             || SCAN_EXIT_CODE=$?
+
+#     - name: Process DAST results
+#       run: |
+#         echo "DAST scan completed with exit code: ${SCAN_EXIT_CODE:-0}"
+        
+#         if [ "${SCAN_EXIT_CODE:-0}" -eq 2 ]; then
+#           echo "❌ CRITICAL: High-risk vulnerabilities found!"
+#           echo "::error::DAST scan found critical security vulnerabilities"
+#           exit 1
+#         elif [ "${SCAN_EXIT_CODE:-0}" -eq 1 ]; then
+#           echo "⚠️ WARNING: Medium-risk vulnerabilities found"
+#           echo "::warning::DAST scan found medium-risk security issues"
+#           echo "Continuing pipeline with warning..."
+#         else
+#           echo "✅ SUCCESS: No critical vulnerabilities found"
+#           echo "DAST security scan passed"
+#         fi
+
+#     - name: Security scan complete
+#       run: |
+#         echo "🔒 DevSecOps DAST scan completed"
+#         echo "Your Flask app has been scanned for security vulnerabilities"
+#         echo "Pipeline can continue to next stages..."
+
 name: DevSecOps DAST Pipeline
 
 on:
@@ -36,7 +105,7 @@ jobs:
       run: |
         echo "Starting DAST security scan..."
         kubectl run zap-scan-${{ github.run_id }} \
-          --image=owasp/zap2docker-stable \
+          --image=devsecops1.azurecr.io/owasp-zap:latest \
           --rm -i --restart=Never \
           -n default \
           -- zap-baseline.py \
@@ -47,19 +116,27 @@ jobs:
 
     - name: Process DAST results
       run: |
-        echo "DAST scan completed with exit code: ${SCAN_EXIT_CODE:-0}"
+        echo "=== FINAL SECURITY ASSESSMENT ==="
         
         if [ "${SCAN_EXIT_CODE:-0}" -eq 2 ]; then
-          echo "❌ CRITICAL: High-risk vulnerabilities found!"
+          echo "❌ CRITICAL: High-risk vulnerabilities found in your Flask app!"
           echo "::error::DAST scan found critical security vulnerabilities"
+          echo "🔒 Security recommendations:"
+          echo "  - Review and fix high-risk vulnerabilities immediately"
+          echo "  - Check input validation and sanitization"  
+          echo "  - Verify authentication and authorization"
           exit 1
         elif [ "${SCAN_EXIT_CODE:-0}" -eq 1 ]; then
-          echo "⚠️ WARNING: Medium-risk vulnerabilities found"
+          echo "⚠️ WARNING: Medium-risk vulnerabilities found in your Flask app"
           echo "::warning::DAST scan found medium-risk security issues"
+          echo "🔒 Security recommendations:"
+          echo "  - Review and address medium-risk issues when possible"
+          echo "  - Consider security headers and HTTPS enforcement"
           echo "Continuing pipeline with warning..."
         else
-          echo "✅ SUCCESS: No critical vulnerabilities found"
-          echo "DAST security scan passed"
+          echo "✅ SUCCESS: Your Flask app passed security scanning!"
+          echo "🔒 No critical vulnerabilities detected"
+          echo "DAST security scan completed successfully"
         fi
 
     - name: Security scan complete
