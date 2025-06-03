@@ -8,7 +8,6 @@ imagePolicy:
   enforcement: "warn"
   allowedRegistries:
   - "devsecops1.azurecr.io/"
-  - "docker.io/owasp/"
   targetNamespaces:
   - "flask-app"
 
