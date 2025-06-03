@@ -1,3 +1,4 @@
+
 # name: DevSecOps DAST Pipeline
 
 # on:
@@ -160,71 +161,33 @@ jobs:
       run: |
         kubectl wait --for=condition=available deployment/flask-app -n flask-app --timeout=300s
 
-    - name: Setup persistent ZAP scanner
+    - name: Get Flask app URL
       run: |
-        # Check if ZAP pod already exists
-        if ! kubectl get pod zap-scanner-persistent -n flask-app >/dev/null 2>&1; then
-          echo "🚀 Creating persistent ZAP scanner pod..."
-          
-          cat <<EOF | kubectl apply -f -
-          apiVersion: v1
-          kind: Pod
-          metadata:
-            name: zap-scanner-persistent
-            namespace: flask-app
-            labels:
-              app: zap-scanner
-          spec:
-            containers:
-            - name: zap
-              image: zaproxy/zap-stable
-              command: ["sleep"]
-              args: ["infinity"]
-              resources:
-                requests:
-                  memory: "512Mi"
-                  cpu: "250m"
-                limits:
-                  memory: "1Gi"
-                  cpu: "500m"
-            restartPolicy: Always
-          EOF
-          
-          # Wait for pod to be ready
-          kubectl wait --for=condition=Ready pod/zap-scanner-persistent -n flask-app --timeout=60s
-          echo "✅ ZAP scanner pod ready for reuse"
-        else
-          echo "♻️ Reusing existing ZAP scanner pod"
-        fi
+        # Get service IP
+        SERVICE_IP=$(kubectl get svc flask-app -n flask-app -o jsonpath='{.spec.clusterIP}')
+        echo "FLASK_URL=http://$SERVICE_IP:80" >> $GITHUB_ENV
+        echo "Flask app available at: $SERVICE_IP:80"
 
-    - name: Run ZAP Security Scan
+    - name: Setup port forward
       run: |
-        echo "🔍 Running DAST scan on persistent pod..."
+        # Port forward Flask app to localhost
+        kubectl port-forward svc/flask-app 8080:80 -n flask-app &
+        sleep 5
+        echo "Port forward active on localhost:8080"
+
+    - name: Run OWASP ZAP Security Scan
+      run: |
+        echo "🔍 Running DAST scan with Docker..."
         
-        # Execute scan in existing pod
-        kubectl exec zap-scanner-persistent -n flask-app -- \
+        docker run --rm --network="host" \
+          zaproxy/zap-stable \
           zap-baseline.py \
-          -t http://flask-app:80 \
+          -t http://localhost:8080 \
           -m 2 \
           -d \
-          -I > scan_results.log 2>&1
-        
-        # Show results
-        cat scan_results.log
-        
-        # Process results
-        if grep -q "FAIL-NEW: [1-9]" scan_results.log; then
-          echo "❌ Critical vulnerabilities found!"
-          exit 1
-        elif grep -q "WARN-NEW: [1-9]" scan_results.log; then
-          WARN_COUNT=$(grep -o "WARN-NEW: [0-9]*" scan_results.log | cut -d' ' -f2)
-          echo "⚠️ $WARN_COUNT medium-risk warnings found"
-          echo "::warning::DAST found $WARN_COUNT security warnings"
-        else
-          echo "✅ No critical vulnerabilities found"
-        fi
+          -I
 
     - name: Security Complete
       run: |
-        echo "🔒 DAST scan completed in $(echo 'scale=1; 30-60' | bc)s using persistent pod"
-        echo "💡 ZAP pod remains available for next pipeline run"
+        echo "🔒 DAST scan completed!"
+        echo "✅ No Kubernetes complexity - just simple Docker!"
