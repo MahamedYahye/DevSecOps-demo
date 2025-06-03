@@ -134,6 +134,64 @@
 #         echo "Your Flask app has been scanned for security vulnerabilities"
 #         echo "Pipeline can continue to next stages..."
 
+# name: DevSecOps DAST Pipeline
+
+# on:
+#   push:
+#     branches: [ main ]
+#   pull_request:
+#     branches: [ main ]
+#   workflow_dispatch:
+
+# jobs:
+#   dast-security-scan:
+#     runs-on: ubuntu-latest
+    
+#     steps:
+#     - name: Checkout code
+#       uses: actions/checkout@v4
+
+#     - name: Setup kubectl
+#       run: |
+#         mkdir -p ~/.kube
+#         echo "${{ secrets.KUBECONFIG }}" | base64 -d > ~/.kube/config
+#         chmod 600 ~/.kube/config
+
+#     - name: Wait for Flask app
+#       run: |
+#         kubectl wait --for=condition=available deployment/flask-app -n flask-app --timeout=300s
+
+#     - name: Get Flask app URL
+#       run: |
+#         # Get service IP
+#         SERVICE_IP=$(kubectl get svc flask-app -n flask-app -o jsonpath='{.spec.clusterIP}')
+#         echo "FLASK_URL=http://$SERVICE_IP:80" >> $GITHUB_ENV
+#         echo "Flask app available at: $SERVICE_IP:80"
+
+#     - name: Setup port forward
+#       run: |
+#         # Port forward Flask app to localhost
+#         kubectl port-forward svc/flask-app 8080:80 -n flask-app &
+#         sleep 5
+#         echo "Port forward active on localhost:8080"
+
+#     - name: Run OWASP ZAP Security Scan
+#       run: |
+#         echo "🔍 Running DAST scan with Docker..."
+        
+#         docker run --rm --network="host" \
+#           zaproxy/zap-stable \
+#           zap-baseline.py \
+#           -t http://localhost:8080 \
+#           -m 2 \
+#           -d \
+#           -I
+
+#     - name: Security Complete
+#       run: |
+#         echo "🔒 DAST scan completed!"
+#         echo "✅ No Kubernetes complexity - just simple Docker!"
+
 name: DevSecOps DAST Pipeline
 
 on:
@@ -144,11 +202,11 @@ on:
   workflow_dispatch:
 
 jobs:
-  dast-security-scan:
+  dast-scan:
     runs-on: ubuntu-latest
     
     steps:
-    - name: Checkout code
+    - name: Checkout
       uses: actions/checkout@v4
 
     - name: Setup kubectl
@@ -157,37 +215,39 @@ jobs:
         echo "${{ secrets.KUBECONFIG }}" | base64 -d > ~/.kube/config
         chmod 600 ~/.kube/config
 
-    - name: Wait for Flask app
-      run: |
-        kubectl wait --for=condition=available deployment/flask-app -n flask-app --timeout=300s
+    - name: Wait for app
+      run: kubectl wait --for=condition=available deployment/flask-app -n flask-app --timeout=300s
 
-    - name: Get Flask app URL
+    - name: Port forward
       run: |
-        # Get service IP
-        SERVICE_IP=$(kubectl get svc flask-app -n flask-app -o jsonpath='{.spec.clusterIP}')
-        echo "FLASK_URL=http://$SERVICE_IP:80" >> $GITHUB_ENV
-        echo "Flask app available at: $SERVICE_IP:80"
-
-    - name: Setup port forward
-      run: |
-        # Port forward Flask app to localhost
         kubectl port-forward svc/flask-app 8080:80 -n flask-app &
         sleep 5
-        echo "Port forward active on localhost:8080"
 
-    - name: Run OWASP ZAP Security Scan
+    - name: ZAP baseline scan
       run: |
-        echo "🔍 Running DAST scan with Docker..."
+        mkdir -p reports
         
-        docker run --rm --network="host" \
+        docker run --rm --network=host \
+          -v $(pwd)/reports:/zap/wrk \
           zaproxy/zap-stable \
           zap-baseline.py \
           -t http://localhost:8080 \
-          -m 2 \
-          -d \
-          -I
+          -J /zap/wrk/report.json \
+          -r /zap/wrk/report.html
 
-    - name: Security Complete
+    - name: Upload to DefectDojo
       run: |
-        echo "🔒 DAST scan completed!"
-        echo "✅ No Kubernetes complexity - just simple Docker!"
+        curl -X POST "${{ secrets.DEFECTDOJO_URL }}/api/v2/import-scan/" \
+          -H "Authorization: Token ${{ secrets.DEFECTDOJO_TOKEN }}" \
+          -F "engagement=${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}" \
+          -F "scan_type=ZAP Scan" \
+          -F "file=@reports/report.json" \
+          -F "active=true" \
+          -F "verified=true"
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: security-reports
+        path: reports/
