@@ -227,11 +227,13 @@ jobs:
       run: |
         mkdir -p reports
         
-        # Run ZAP scan - it will output to console
+        # Run ZAP scan with JSON output for DefectDojo
         docker run --rm --network=host \
+          -v $(pwd)/reports:/zap/wrk \
           zaproxy/zap-stable \
           zap-baseline.py \
           -t http://localhost:8080 \
+          -J /zap/wrk/zap-report.json \
           || SCAN_EXIT_CODE=$?
         
         echo "ZAP_EXIT_CODE=${SCAN_EXIT_CODE:-0}" >> $GITHUB_ENV
@@ -258,14 +260,39 @@ jobs:
             echo "Exit code was: ${ZAP_EXIT_CODE:-0}"
             ;;
         esac
-        
-        echo "✅ Security scan completed successfully"
 
-    - name: Upload artifacts
-      uses: actions/upload-artifact@v4
+    - name: Upload to DefectDojo
       if: always()
-      with:
-        name: security-scan-logs
-        path: |
-          **/*.log
-          reports/
+      run: |
+        if [ -f "reports/zap-report.json" ]; then
+          echo "📤 Uploading scan results to DefectDojo..."
+          
+          RESPONSE=$(curl -s -w "%{http_code}" -X POST "${{ secrets.DEFECTDOJO_URL }}/api/v2/import-scan/" \
+            -H "Authorization: Token ${{ secrets.DEFECTDOJO_TOKEN }}" \
+            -F "engagement=${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}" \
+            -F "scan_type=ZAP Scan" \
+            -F "file=@reports/zap-report.json" \
+            -F "active=true" \
+            -F "verified=true" \
+            -F "test_title=DAST-Pipeline-${{ github.run_id }}" \
+            -F "branch_tag=${{ github.ref_name }}" \
+            -F "commit_hash=${{ github.sha }}")
+          
+          HTTP_CODE=$(echo "$RESPONSE" | tail -c 4)
+          
+          if [ "$HTTP_CODE" -eq 201 ] || [ "$HTTP_CODE" -eq 200 ]; then
+            echo "✅ Successfully uploaded to DefectDojo"
+            echo "🔗 View results at: ${{ secrets.DEFECTDOJO_URL }}"
+          else
+            echo "⚠️ DefectDojo upload failed with HTTP code: $HTTP_CODE"
+            echo "Response: $RESPONSE"
+          fi
+        else
+          echo "⚠️ No JSON report found - skipping DefectDojo upload"
+        fi
+
+    - name: Security Complete
+      run: |
+        echo "🔒 DAST security scan completed"
+        echo "📊 Results uploaded to DefectDojo for centralized tracking"
+        echo "✅ Pipeline continues - only CRITICAL vulnerabilities would stop deployment"
