@@ -227,13 +227,13 @@ jobs:
       run: |
         mkdir -p reports
         
-        # Run ZAP scan with JSON output for DefectDojo
+        # Run ZAP scan with XML output for DefectDojo
         docker run --rm --network=host \
           -v $(pwd)/reports:/zap/wrk \
           zaproxy/zap-stable \
           zap-baseline.py \
           -t http://localhost:8080 \
-          -J /zap/wrk/zap-report.json \
+          -x /zap/wrk/zap-report.xml \
           || SCAN_EXIT_CODE=$?
         
         echo "ZAP_EXIT_CODE=${SCAN_EXIT_CODE:-0}" >> $GITHUB_ENV
@@ -264,14 +264,14 @@ jobs:
     - name: Upload to DefectDojo
       if: always()
       run: |
-        if [ -f "reports/zap-report.json" ]; then
-          echo "📤 Uploading scan results to DefectDojo..."
+        if [ -f "reports/zap-report.xml" ]; then
+          echo "📤 Uploading XML scan results to DefectDojo..."
           
           RESPONSE=$(curl -s -w "%{http_code}" -X POST "${{ secrets.DEFECTDOJO_URL }}/api/v2/import-scan/" \
             -H "Authorization: Token ${{ secrets.DEFECTDOJO_TOKEN }}" \
             -F "engagement=${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}" \
             -F "scan_type=ZAP Scan" \
-            -F "file=@reports/zap-report.json" \
+            -F "file=@reports/zap-report.xml" \
             -F "active=true" \
             -F "verified=true" \
             -F "test_title=DAST-Pipeline-${{ github.run_id }}" \
@@ -288,7 +288,7 @@ jobs:
             echo "Response: $RESPONSE"
           fi
         else
-          echo "⚠️ No JSON report found - skipping DefectDojo upload"
+          echo "⚠️ No XML report found - skipping DefectDojo upload"
         fi
 
     - name: Security Complete
