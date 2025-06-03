@@ -130,8 +130,9 @@ jobs:
           echo "⚠️ WARNING: Medium-risk vulnerabilities found in your Flask app"
           echo "::warning::DAST scan found medium-risk security issues"
           echo "🔒 Security recommendations:"
-          echo "  - Review and address medium-risk issues when possible"
-          echo "  - Consider security headers and HTTPS enforcement"
+          echo "  - Add security headers (X-Frame-Options, CSP, X-Content-Type-Options)"
+          echo "  - Implement Content Security Policy"
+          echo "  - Consider adding flask-talisman for security headers"
           echo "Continuing pipeline with warning..."
         else
           echo "✅ SUCCESS: Your Flask app passed security scanning!"
