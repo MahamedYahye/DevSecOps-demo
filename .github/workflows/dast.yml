@@ -227,35 +227,30 @@ jobs:
       run: |
         mkdir -p reports
         
-        # Run ZAP scan and capture exit code
+        # Run ZAP scan with HTML report only
         docker run --rm --network=host \
           -v $(pwd)/reports:/zap/wrk \
           zaproxy/zap-stable \
           zap-baseline.py \
           -t http://localhost:8080 \
-          -J /zap/wrk/report.json \
           -r /zap/wrk/report.html \
-          -w /zap/wrk/report.md \
-          -c /zap/wrk/report.conf \
           || SCAN_EXIT_CODE=$?
         
         echo "ZAP_EXIT_CODE=${SCAN_EXIT_CODE:-0}" >> $GITHUB_ENV
         
-        # List generated files for debugging
+        # Show what was generated
         echo "Generated files:"
         ls -la reports/
 
     - name: Process scan results
       run: |
-        # Check if any report was generated
-        if [ ! -f "reports/report.json" ] && [ ! -f "reports/report.html" ]; then
-          echo "❌ No reports generated - scan may have failed completely"
-          if [ -f "reports/report.md" ]; then
-            echo "Found markdown report, showing content:"
-            cat reports/report.md
-          fi
+        # Check if HTML report was generated
+        if [ ! -f "reports/report.html" ]; then
+          echo "❌ HTML report not generated - scan failed"
           exit 1
         fi
+        
+        echo "✅ HTML report generated successfully"
         
         # Process results based on exit code
         case ${ZAP_EXIT_CODE:-0} in
@@ -271,7 +266,7 @@ jobs:
             echo "::warning::DAST found high-risk vulnerabilities (not critical)"
             ;;
           *)
-            echo "⚠️ Scan completed with warnings - continuing pipeline"
+            echo "⚠️ Scan completed - continuing pipeline"
             echo "Exit code was: ${ZAP_EXIT_CODE:-0}"
             ;;
         esac
@@ -279,26 +274,18 @@ jobs:
     - name: Upload to DefectDojo
       if: always()
       run: |
-        # Try JSON first, then fallback to other formats
-        REPORT_FILE=""
-        if [ -f "reports/report.json" ]; then
-          REPORT_FILE="reports/report.json"
-        elif [ -f "reports/report.html" ]; then
-          REPORT_FILE="reports/report.html"
-        fi
-        
-        if [ -n "$REPORT_FILE" ]; then
-          echo "Uploading $REPORT_FILE to DefectDojo..."
+        if [ -f "reports/report.html" ]; then
+          echo "Uploading HTML report to DefectDojo..."
           curl -X POST "${{ secrets.DEFECTDOJO_URL }}/api/v2/import-scan/" \
             -H "Authorization: Token ${{ secrets.DEFECTDOJO_TOKEN }}" \
             -F "engagement=${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}" \
             -F "scan_type=ZAP Scan" \
-            -F "file=@$REPORT_FILE" \
+            -F "file=@reports/report.html" \
             -F "active=true" \
             -F "verified=true" \
             || echo "⚠️ DefectDojo upload failed"
         else
-          echo "⚠️ No suitable report file found for DefectDojo upload"
+          echo "⚠️ No HTML report found for upload"
         fi
 
     - name: Upload artifacts
