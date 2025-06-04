@@ -305,43 +305,29 @@ jobs:
         kubectl port-forward svc/flask-app 8080:80 -n flask-app &
         sleep 5
         
-    # ZAP scan zonder automatische outputs (laat ZAP Action zelf de bestanden maken)
+    # Gebruik de nieuwste versie v0.14.0 met artifact_name parameter
     - name: ZAP Baseline Scan
-      uses: zaproxy/action-baseline@v0.12.0
+      uses: zaproxy/action-baseline@v0.14.0
       with:
         target: 'http://localhost:8080'
         cmd_options: '-a'
         fail_action: false
         allow_issue_writing: false
+        artifact_name: 'zap-security-reports'  # Dit voorkomt de "zap_scan" conflict
         
-    # Genereer XML bestand handmatig voor DefectDojo
-    - name: Generate XML Report for DefectDojo
+    # Handmatige upload naar DefectDojo met alle formaten
+    - name: Run ZAP for DefectDojo XML
       if: always()
       run: |
-        echo "🔧 Checking available report files..."
-        ls -la report_*.*
-        
-        # Als JSON bestand leeg is, probeer het opnieuw met ZAP CLI
-        if [ ! -s "report_json.json" ]; then
-          echo "📝 JSON report is empty, running ZAP again for proper output..."
-          docker run --rm -v $PWD:/zap/wrk/:rw \
-            ghcr.io/zaproxy/zaproxy:stable \
-            zap-baseline.py -t http://host.docker.internal:8080 \
-            -J /zap/wrk/report_json_new.json \
-            -x /zap/wrk/report_xml_new.xml \
-            -r /zap/wrk/report_html_new.html \
-            -w /zap/wrk/report_md_new.md \
-            -a || true
-            
-          # Gebruik de nieuwe bestanden als ze bestaan en niet leeg zijn
-          [ -s "report_json_new.json" ] && mv report_json_new.json report_json.json
-          [ -s "report_xml_new.xml" ] && mv report_xml_new.xml report_xml.xml
-          [ -s "report_html_new.html" ] && mv report_html_new.html report_html.html
-          [ -s "report_md_new.md" ] && mv report_md_new.md report_md.md
-        fi
-        
-        echo "📋 Final report files:"
-        ls -la report_*.*
+        echo "🔧 Running ZAP scan for XML output (DefectDojo compatible)..."
+        docker run --rm -v $PWD:/zap/wrk/:rw --network=host \
+          ghcr.io/zaproxy/zaproxy:stable \
+          zap-baseline.py -t http://localhost:8080 \
+          -x /zap/wrk/defectdojo_report.xml \
+          -a || true
+          
+        echo "📋 Available files for DefectDojo:"
+        ls -la *.xml || echo "No XML files found"
         
     - name: Upload to DefectDojo
       if: always()
@@ -349,64 +335,49 @@ jobs:
         SCAN_DATE=$(date +%Y-%m-%d)
         SCAN_TIME=$(date +%H-%M-%S)
         
-        # Check welke bestanden beschikbaar zijn
-        echo "📋 Available scan files:"
-        ls -la report_*.*
-        
-        # Gebruik XML bestand voor DefectDojo (vereist voor ZAP Scan type)
-        if [ -f "report_xml.xml" ]; then
-          echo "📤 Uploading ZAP XML scan to DefectDojo..."
+        # Probeer eerst XML (preferred voor ZAP Scan type)
+        if [ -f "defectdojo_report.xml" ] && [ -s "defectdojo_report.xml" ]; then
+          echo "📤 Uploading ZAP XML to DefectDojo..."
           
           curl -X POST "${{ secrets.DEFECTDOJO_URL }}/api/v2/import-scan/" \
             -H "Authorization: Token ${{ secrets.DEFECTDOJO_API_KEY }}" \
             -F "scan_date=$SCAN_DATE" \
             -F "scan_type=ZAP Scan" \
             -F "close_old_findings=true" \
-            -F "test_title=ZAP DAST Scan $SCAN_DATE $SCAN_TIME" \
-            -F "tags=time_${SCAN_TIME}_branch_${{ github.ref_name }}" \
+            -F "test_title=ZAP_DAST_Scan_${SCAN_DATE}_${SCAN_TIME}" \
+            -F "tags=zap_dast_branch_${{ github.ref_name }}" \
             -F "description=DAST security scan from GitHub Actions pipeline" \
-            -F "deduplication_on_engagement=true" \
             -F "engagement=${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}" \
-            -F "file=@report_xml.xml"
+            -F "file=@defectdojo_report.xml"
           
-          echo "✅ ZAP XML scan uploaded to DefectDojo"
-        elif [ -f "report_json.json" ]; then
-          echo "📤 Uploading ZAP JSON scan to DefectDojo..."
+          echo "✅ ZAP XML uploaded to DefectDojo"
+          
+        # Fallback: probeer HTML als Generic Import
+        elif [ -f "report_html.html" ] && [ -s "report_html.html" ]; then
+          echo "📤 Uploading HTML as Generic Import to DefectDojo..."
           
           curl -X POST "${{ secrets.DEFECTDOJO_URL }}/api/v2/import-scan/" \
             -H "Authorization: Token ${{ secrets.DEFECTDOJO_API_KEY }}" \
             -F "scan_date=$SCAN_DATE" \
-            -F "scan_type=ZAP Scan" \
+            -F "scan_type=Generic Findings Import" \
             -F "close_old_findings=true" \
-            -F "test_title=ZAP DAST Scan $SCAN_DATE $SCAN_TIME" \
-            -F "tags=time_${SCAN_TIME}_branch_${{ github.ref_name }}" \
+            -F "test_title=ZAP_DAST_Scan_${SCAN_DATE}_${SCAN_TIME}" \
+            -F "tags=zap_dast_branch_${{ github.ref_name }}" \
             -F "description=DAST security scan from GitHub Actions pipeline" \
-            -F "deduplication_on_engagement=true" \
             -F "engagement=${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}" \
-            -F "file=@report_json.json"
+            -F "file=@report_html.html"
           
-          echo "✅ ZAP JSON scan uploaded to DefectDojo"
+          echo "✅ HTML report uploaded to DefectDojo as Generic Import"
         else
-          echo "⚠️ No XML or JSON report found - skipping DefectDojo upload"
+          echo "⚠️ No valid report files found for DefectDojo upload"
           echo "Available files:"
-          ls -la
+          ls -la report_* *.xml || echo "No report files found"
         fi
         
-    - name: Upload ZAP results
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: zap-security-reports
-        path: |
-          report_html.html
-          report_json.json
-          report_md.md
-          report_xml.xml
-          
     - name: Security Complete
       run: |
-        echo "🔒 DAST security scan completed using official ZAP Action"
+        echo "🔒 DAST security scan completed"
         echo "📊 Results available in:"
-        echo "  - GitHub Artifacts (HTML/JSON reports)"
+        echo "  - GitHub Artifacts (zap-security-reports)"
         echo "  - DefectDojo (centralized vulnerability management)"
-        echo "✅ Complete DevSecOps pipeline with multiple outputs!"
+        echo "✅ DevSecOps pipeline complete!"
