@@ -305,29 +305,36 @@ jobs:
         kubectl port-forward svc/flask-app 8080:80 -n flask-app &
         sleep 5
         
-    # Gebruik de nieuwste versie v0.14.0 met artifact_name parameter
-    - name: ZAP Baseline Scan
-      uses: zaproxy/action-baseline@v0.14.0
-      with:
-        target: 'http://localhost:8080'
-        cmd_options: '-a'
-        fail_action: false
-        allow_issue_writing: false
-        artifact_name: 'zap-security-reports'  # Dit voorkomt de "zap_scan" conflict
-        
-    # Handmatige upload naar DefectDojo met alle formaten
-    - name: Run ZAP for DefectDojo XML
-      if: always()
+    # Eenvoudige ZAP scan - alleen XML en HTML
+    - name: Run ZAP DAST Scan
       run: |
-        echo "🔧 Running ZAP scan for XML output (DefectDojo compatible)..."
-        docker run --rm -v $PWD:/zap/wrk/:rw --network=host \
+        echo "🚀 Starting ZAP DAST scan..."
+        
+        # Run ZAP scan met XML (voor DefectDojo) en HTML (voor mensen)
+        docker run --rm \
+          -v $PWD:/zap/wrk/:rw \
+          --network=host \
           ghcr.io/zaproxy/zaproxy:stable \
-          zap-baseline.py -t http://localhost:8080 \
-          -x /zap/wrk/defectdojo_report.xml \
-          -a || true
+          zap-baseline.py \
+          -t http://localhost:8080 \
+          -x /zap/wrk/zap-report.xml \
+          -r /zap/wrk/zap-report.html \
+          -a \
+          || echo "ZAP scan completed (warnings expected)"
           
-        echo "📋 Available files for DefectDojo:"
-        ls -la *.xml || echo "No XML files found"
+        echo "📋 Generated reports:"
+        ls -la zap-report.*
+        
+        # Check file sizes
+        if [ -f "zap-report.xml" ]; then
+          xml_size=$(stat -c%s "zap-report.xml" 2>/dev/null || stat -f%z "zap-report.xml" 2>/dev/null)
+          echo "📄 XML report: ${xml_size} bytes"
+        fi
+        
+        if [ -f "zap-report.html" ]; then
+          html_size=$(stat -c%s "zap-report.html" 2>/dev/null || stat -f%z "zap-report.html" 2>/dev/null)
+          echo "📄 HTML report: ${html_size} bytes"
+        fi
         
     - name: Upload to DefectDojo
       if: always()
@@ -335,8 +342,7 @@ jobs:
         SCAN_DATE=$(date +%Y-%m-%d)
         SCAN_TIME=$(date +%H-%M-%S)
         
-        # Probeer eerst XML (preferred voor ZAP Scan type)
-        if [ -f "defectdojo_report.xml" ] && [ -s "defectdojo_report.xml" ]; then
+        if [ -f "zap-report.xml" ] && [ -s "zap-report.xml" ]; then
           echo "📤 Uploading ZAP XML to DefectDojo..."
           
           curl -X POST "${{ secrets.DEFECTDOJO_URL }}/api/v2/import-scan/" \
@@ -344,40 +350,42 @@ jobs:
             -F "scan_date=$SCAN_DATE" \
             -F "scan_type=ZAP Scan" \
             -F "close_old_findings=true" \
-            -F "test_title=ZAP_DAST_Scan_${SCAN_DATE}_${SCAN_TIME}" \
+            -F "test_title=ZAP_DAST_${SCAN_DATE}_${SCAN_TIME}" \
             -F "tags=zap_dast_branch_${{ github.ref_name }}" \
             -F "description=DAST security scan from GitHub Actions pipeline" \
             -F "engagement=${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}" \
-            -F "file=@defectdojo_report.xml"
+            -F "file=@zap-report.xml"
           
           echo "✅ ZAP XML uploaded to DefectDojo"
-          
-        # Fallback: probeer HTML als Generic Import
-        elif [ -f "report_html.html" ] && [ -s "report_html.html" ]; then
-          echo "📤 Uploading HTML as Generic Import to DefectDojo..."
-          
-          curl -X POST "${{ secrets.DEFECTDOJO_URL }}/api/v2/import-scan/" \
-            -H "Authorization: Token ${{ secrets.DEFECTDOJO_API_KEY }}" \
-            -F "scan_date=$SCAN_DATE" \
-            -F "scan_type=Generic Findings Import" \
-            -F "close_old_findings=true" \
-            -F "test_title=ZAP_DAST_Scan_${SCAN_DATE}_${SCAN_TIME}" \
-            -F "tags=zap_dast_branch_${{ github.ref_name }}" \
-            -F "description=DAST security scan from GitHub Actions pipeline" \
-            -F "engagement=${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}" \
-            -F "file=@report_html.html"
-          
-          echo "✅ HTML report uploaded to DefectDojo as Generic Import"
         else
-          echo "⚠️ No valid report files found for DefectDojo upload"
+          echo "⚠️ No valid XML report found for DefectDojo upload"
           echo "Available files:"
-          ls -la report_* *.xml || echo "No report files found"
+          ls -la zap-report.* || echo "No ZAP reports found"
         fi
         
-    - name: Security Complete
+    # Upload HTML voor handmatige review
+    - name: Upload Reports as GitHub Artifacts
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: zap-security-reports
+        path: |
+          zap-report.xml
+          zap-report.html
+        retention-days: 30
+        
+    - name: Security Scan Summary
+      if: always()
       run: |
         echo "🔒 DAST security scan completed"
         echo "📊 Results available in:"
-        echo "  - GitHub Artifacts (zap-security-reports)"
-        echo "  - DefectDojo (centralized vulnerability management)"
+        echo "  - DefectDojo: XML uploaded for vulnerability management"
+        echo "  - GitHub Artifacts: HTML report for manual review"
+        
+        # Optioneel: toon aantal findings uit XML
+        if [ -f "zap-report.xml" ]; then
+          alerts=$(grep -c "<alertitem>" zap-report.xml || echo 0)
+          echo "  - Found $alerts security alerts"
+        fi
+        
         echo "✅ DevSecOps pipeline complete!"
