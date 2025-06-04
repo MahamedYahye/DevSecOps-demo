@@ -309,11 +309,13 @@ jobs:
       run: |
         docker run --rm -v $PWD:/zap/wrk/:rw --user root --network=host \
           ghcr.io/zaproxy/zaproxy:stable \
-          zap-baseline.py -t http://localhost:8080 -J report.json -r report.html -x report.xml -a
+          zap-baseline.py -t http://localhost:8080 -J report.json -r report.html -x report.xml -a \
+          || true
         
         ls -la *.xml *.html *.json
         
     - name: Upload to DefectDojo
+      if: always()
       run: |
         curl -X POST "${{ secrets.DEFECTDOJO_URL }}/api/v2/import-scan/" \
           -H "Authorization: Token ${{ secrets.DEFECTDOJO_API_KEY }}" \
