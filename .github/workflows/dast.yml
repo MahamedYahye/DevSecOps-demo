@@ -305,122 +305,49 @@ jobs:
         kubectl port-forward svc/flask-app 8080:80 -n flask-app &
         sleep 5
         
-    # Simpele ZAP scan - laat ZAP zelf de bestanden maken
-    - name: Run ZAP DAST Scan
+    - name: Run ZAP Scan
       run: |
-        echo "🚀 Starting ZAP DAST scan..."
+        # Maak reports directory met volledige rechten
+        mkdir -p reports
+        chmod 777 reports
         
-        # Run ZAP baseline zonder custom output - laat ZAP het zelf regelen
+        # Run ZAP scan
         docker run --rm \
-          -v $PWD:/zap/wrk/:rw \
+          -v $PWD/reports:/zap/wrk/:rw \
+          --user root \
           --network=host \
           ghcr.io/zaproxy/zaproxy:stable \
           zap-baseline.py \
           -t http://localhost:8080 \
-          -a \
-          || echo "ZAP scan completed (warnings expected)"
+          -J /zap/wrk/report.json \
+          -r /zap/wrk/report.html \
+          -x /zap/wrk/report.xml \
+          -a
           
-        echo "📋 What did ZAP actually create?"
-        find . -name "*.xml" -o -name "*.html" -o -name "*.json" | head -10
-        
-        echo "📂 Directory contents:"
-        ls -la
-        
-        # Check for any ZAP reports in standard locations
-        if [ -f "report_html.html" ]; then
-          echo "✅ Found standard HTML report"
-          cp report_html.html zap-report.html
-        fi
-        
-        if [ -f "report_xml.xml" ]; then
-          echo "✅ Found standard XML report"  
-          cp report_xml.xml zap-report.xml
-        fi
-        
-        # If no standard reports, try to generate XML manually with curl
-        if [ ! -f "zap-report.xml" ]; then
-          echo "🔧 No XML found, trying ZAP daemon approach..."
-          
-          # Start ZAP daemon
-          docker run -d --name zap-daemon \
-            -p 8090:8090 \
-            --network=host \
-            ghcr.io/zaproxy/zaproxy:stable \
-            zap.sh -daemon -host 0.0.0.0 -port 8090 -config api.disablekey=true
-            
-          sleep 10
-          
-          # Quick scan and export
-          curl -s "http://localhost:8090/JSON/spider/action/scan/?url=http://localhost:8080"
-          sleep 15
-          curl -s "http://localhost:8090/OTHER/core/other/xmlreport/" > zap-report.xml
-          curl -s "http://localhost:8090/OTHER/core/other/htmlreport/" > zap-report.html
-          
-          # Cleanup
-          docker stop zap-daemon || true
-          docker rm zap-daemon || true
-        fi
-        
-        echo "📄 Final report status:"
-        for file in zap-report.xml zap-report.html; do
-          if [ -f "$file" ]; then
-            size=$(stat -c%s "$file" 2>/dev/null || stat -f%z "$file" 2>/dev/null)
-            echo "  $file: ${size} bytes"
-          else
-            echo "  $file: not found"
-          fi
-        done
+        # Check wat er gemaakt is
+        ls -la reports/
         
     - name: Upload to DefectDojo
       if: always()
       run: |
-        SCAN_DATE=$(date +%Y-%m-%d)
-        SCAN_TIME=$(date +%H-%M-%S)
+        cd reports
         
-        if [ -f "zap-report.xml" ] && [ -s "zap-report.xml" ]; then
-          echo "📤 Uploading ZAP XML to DefectDojo..."
-          
+        if [ -f "report.xml" ] && [ -s "report.xml" ]; then
+          echo "📤 Uploading XML to DefectDojo..."
           curl -X POST "${{ secrets.DEFECTDOJO_URL }}/api/v2/import-scan/" \
             -H "Authorization: Token ${{ secrets.DEFECTDOJO_API_KEY }}" \
-            -F "scan_date=$SCAN_DATE" \
+            -F "scan_date=$(date +%Y-%m-%d)" \
             -F "scan_type=ZAP Scan" \
-            -F "close_old_findings=true" \
-            -F "test_title=ZAP_DAST_${SCAN_DATE}_${SCAN_TIME}" \
-            -F "tags=zap_dast_branch_${{ github.ref_name }}" \
-            -F "description=DAST security scan from GitHub Actions pipeline" \
             -F "engagement=${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}" \
-            -F "file=@zap-report.xml"
-          
-          echo "✅ ZAP XML uploaded to DefectDojo"
+            -F "file=@report.xml"
+          echo "✅ Upload complete"
         else
-          echo "⚠️ No valid XML report found for DefectDojo upload"
-          echo "Available files:"
-          ls -la zap-report.* || echo "No ZAP reports found"
+          echo "❌ No XML file found"
         fi
         
-    # Upload HTML voor handmatige review
-    - name: Upload Reports as GitHub Artifacts
+    - name: Upload Reports
       uses: actions/upload-artifact@v4
       if: always()
       with:
-        name: zap-security-reports
-        path: |
-          zap-report.xml
-          zap-report.html
-        retention-days: 30
-        
-    - name: Security Scan Summary
-      if: always()
-      run: |
-        echo "🔒 DAST security scan completed"
-        echo "📊 Results available in:"
-        echo "  - DefectDojo: XML uploaded for vulnerability management"
-        echo "  - GitHub Artifacts: HTML report for manual review"
-        
-        # Optioneel: toon aantal findings uit XML
-        if [ -f "zap-report.xml" ]; then
-          alerts=$(grep -c "<alertitem>" zap-report.xml || echo 0)
-          echo "  - Found $alerts security alerts"
-        fi
-        
-        echo "✅ DevSecOps pipeline complete!"
+        name: zap-reports
+        path: reports/
