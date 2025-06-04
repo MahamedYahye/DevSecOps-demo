@@ -305,15 +305,43 @@ jobs:
         kubectl port-forward svc/flask-app 8080:80 -n flask-app &
         sleep 5
         
-    # ZAP scan zonder automatische artifact upload
+    # ZAP scan zonder automatische outputs (laat ZAP Action zelf de bestanden maken)
     - name: ZAP Baseline Scan
       uses: zaproxy/action-baseline@v0.12.0
       with:
         target: 'http://localhost:8080'
-        cmd_options: '-a -J report_json.json -w report_md.md -r report_html.html -x report_xml.xml'
-        issue_title: 'DAST Security Scan'
+        cmd_options: '-a'
         fail_action: false
         allow_issue_writing: false
+        
+    # Genereer XML bestand handmatig voor DefectDojo
+    - name: Generate XML Report for DefectDojo
+      if: always()
+      run: |
+        echo "🔧 Checking available report files..."
+        ls -la report_*.*
+        
+        # Als JSON bestand leeg is, probeer het opnieuw met ZAP CLI
+        if [ ! -s "report_json.json" ]; then
+          echo "📝 JSON report is empty, running ZAP again for proper output..."
+          docker run --rm -v $PWD:/zap/wrk/:rw \
+            ghcr.io/zaproxy/zaproxy:stable \
+            zap-baseline.py -t http://host.docker.internal:8080 \
+            -J /zap/wrk/report_json_new.json \
+            -x /zap/wrk/report_xml_new.xml \
+            -r /zap/wrk/report_html_new.html \
+            -w /zap/wrk/report_md_new.md \
+            -a || true
+            
+          # Gebruik de nieuwe bestanden als ze bestaan en niet leeg zijn
+          [ -s "report_json_new.json" ] && mv report_json_new.json report_json.json
+          [ -s "report_xml_new.xml" ] && mv report_xml_new.xml report_xml.xml
+          [ -s "report_html_new.html" ] && mv report_html_new.html report_html.html
+          [ -s "report_md_new.md" ] && mv report_md_new.md report_md.md
+        fi
+        
+        echo "📋 Final report files:"
+        ls -la report_*.*
         
     - name: Upload to DefectDojo
       if: always()
