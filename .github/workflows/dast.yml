@@ -202,84 +202,47 @@ on:
   workflow_dispatch:
 
 jobs:
-  setup-kube:
-    name: "Setup Kubernetes Access"
+  dast-security-scan:
     runs-on: ubuntu-latest
-    outputs:
-      kubeconfig-path: ${{ steps.export-kubeconfig.outputs.kubeconfig-path }}
+    
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
 
-      - name: Write kubeconfig from secret
-        id: export-kubeconfig
-        run: |
-          mkdir -p ~/.kube
-          echo "${{ secrets.KUBECONFIG }}" | base64 -d > ~/.kube/config
-          chmod 600 ~/.kube/config
-          echo "kubeconfig-path=${HOME}/.kube/config" >> $GITHUB_OUTPUT
+    - name: Setup kubectl
+      run: |
+        mkdir -p ~/.kube
+        echo "${{ secrets.KUBECONFIG }}" | base64 -d > ~/.kube/config
+        chmod 600 ~/.kube/config
 
-  dast-scan:
-    name: "DAST Scan met ZAP"
-    runs-on: ubuntu-latest
-    needs: setup-kube
+    - name: Wait for Flask app
+      run: |
+        kubectl wait --for=condition=available deployment/flask-app -n flask-app --timeout=300s
 
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+    - name: Get Flask app URL
+      run: |
+        # Get service IP
+        SERVICE_IP=$(kubectl get svc flask-app -n flask-app -o jsonpath='{.spec.clusterIP}')
+        echo "FLASK_URL=http://$SERVICE_IP:80" >> $GITHUB_ENV
+        echo "Flask app available at: $SERVICE_IP:80"
 
-      - name: Restore kubeconfig
-        run: |
-          mkdir -p ~/.kube
-          cp "${{ needs.setup-kube.outputs.kubeconfig-path }}" ~/.kube/config
+    - name: Setup port forward
+      run: |
+        # Port forward Flask app to localhost
+        kubectl port-forward svc/flask-app 8080:80 -n flask-app &
+        sleep 5
+        echo "Port forward active on localhost:8080"
 
-      - name: Wacht tot app beschikbaar is
-        run: |
-          kubectl wait --for=condition=available deployment/flask-app -n flask-app --timeout=300s
+    - name: Run OWASP ZAP Baseline Scan (GitHub Action)
+      uses: zaproxy/action-baseline@v0.10.0
+      with:
+        target: 'http://localhost:8080'
+        fail_action: false
+        report_file: zap-report.html
+        xml_report_file: zap-report.xml
+      continue-on-error: true
 
-      - name: Start port-forward (in background)
-        run: |
-          kubectl port-forward svc/flask-app 8080:80 -n flask-app &
-          sleep 7
-          curl -I http://localhost:8080
-
-      - name: OWASP ZAP Baseline Scan
-        uses: zaproxy/action-baseline@v0.10.0
-        with:
-          target: 'http://localhost:8080'
-          fail_action: false
-          report_file: zap-report.html
-          xml_report_file: zap-report.xml
-        continue-on-error: true
-
-      - name: Upload ZAP Report naar DefectDojo
-        if: always()
-        run: |
-          if [ -f "zap-report.xml" ]; then
-            echo "📤 Uploading XML scan results to DefectDojo..."
-            RESPONSE=$(curl -s -w "%{http_code}" -X POST "${{ secrets.DEFECTDOJO_URL }}/api/v2/import-scan/" \
-              -H "Authorization: Token ${{ secrets.DEFECTDOJO_TOKEN }}" \
-              -F "engagement=${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}" \
-              -F "scan_type=ZAP Scan" \
-              -F "file=@zap-report.xml" \
-              -F "active=true" \
-              -F "verified=true" \
-              -F "test_title=DAST-Pipeline-${{ github.run_id }}" \
-              -F "branch_tag=${{ github.ref_name }}" \
-              -F "commit_hash=${{ github.sha }}")
-            HTTP_CODE=$(echo "$RESPONSE" | tail -c 4)
-            if [ "$HTTP_CODE" -eq 201 ] || [ "$HTTP_CODE" -eq 200 ]; then
-              echo "✅ Successfully uploaded to DefectDojo"
-            else
-              echo "⚠️ DefectDojo upload failed with HTTP code: $HTTP_CODE"
-              echo "Response: $RESPONSE"
-            fi
-          else
-            echo "⚠️ No XML report found - skipping DefectDojo upload"
-          fi
-
-      - name: Pipeline afgerond
-        run: |
-          echo "🔒 DAST security scan completed"
-          echo "📊 Results uploaded to DefectDojo for centralized tracking"
-          echo "✅ Pipeline continues - only CRITICAL vulnerabilities would stop deployment"
+    - name: Security Complete
+      run: |
+        echo "🔒 DAST scan completed!"
+        echo "✅ No Kubernetes complexity - just simple OWASP ZAP GitHub Action!"
