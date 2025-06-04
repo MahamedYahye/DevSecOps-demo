@@ -305,16 +305,15 @@ jobs:
         kubectl port-forward svc/flask-app 8080:80 -n flask-app &
         sleep 5
         
-    # Enkele ZAP scan met correcte parameters
+    # ZAP scan zonder automatische artifact upload
     - name: ZAP Baseline Scan
       uses: zaproxy/action-baseline@v0.12.0
       with:
         target: 'http://localhost:8080'
-        cmd_options: '-a'
+        cmd_options: '-a -J report_json.json -w report_md.md -r report_html.html -x report_xml.xml'
         issue_title: 'DAST Security Scan'
         fail_action: false
-        # Verwijder create_issue parameter (niet ondersteund)
-        # Verwijder artifact_name: false (veroorzaakt artifact upload error)
+        allow_issue_writing: false
         
     - name: Upload to DefectDojo
       if: always()
@@ -322,10 +321,14 @@ jobs:
         SCAN_DATE=$(date +%Y-%m-%d)
         SCAN_TIME=$(date +%H-%M-%S)
         
-        if [ -f "report_html.html" ]; then
-          echo "📤 Uploading ZAP scan to DefectDojo..."
+        # Check welke bestanden beschikbaar zijn
+        echo "📋 Available scan files:"
+        ls -la report_*.*
+        
+        # Gebruik XML bestand voor DefectDojo (vereist voor ZAP Scan type)
+        if [ -f "report_xml.xml" ]; then
+          echo "📤 Uploading ZAP XML scan to DefectDojo..."
           
-          # Fix de tags format - geen spaties, komma's of quotes
           curl -X POST "${{ secrets.DEFECTDOJO_URL }}/api/v2/import-scan/" \
             -H "Authorization: Token ${{ secrets.DEFECTDOJO_API_KEY }}" \
             -F "scan_date=$SCAN_DATE" \
@@ -336,11 +339,29 @@ jobs:
             -F "description=DAST security scan from GitHub Actions pipeline" \
             -F "deduplication_on_engagement=true" \
             -F "engagement=${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}" \
-            -F "file=@report_html.html"
+            -F "file=@report_xml.xml"
           
-          echo "✅ ZAP scan uploaded to DefectDojo"
+          echo "✅ ZAP XML scan uploaded to DefectDojo"
+        elif [ -f "report_json.json" ]; then
+          echo "📤 Uploading ZAP JSON scan to DefectDojo..."
+          
+          curl -X POST "${{ secrets.DEFECTDOJO_URL }}/api/v2/import-scan/" \
+            -H "Authorization: Token ${{ secrets.DEFECTDOJO_API_KEY }}" \
+            -F "scan_date=$SCAN_DATE" \
+            -F "scan_type=ZAP Scan" \
+            -F "close_old_findings=true" \
+            -F "test_title=ZAP DAST Scan $SCAN_DATE $SCAN_TIME" \
+            -F "tags=time_${SCAN_TIME}_branch_${{ github.ref_name }}" \
+            -F "description=DAST security scan from GitHub Actions pipeline" \
+            -F "deduplication_on_engagement=true" \
+            -F "engagement=${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}" \
+            -F "file=@report_json.json"
+          
+          echo "✅ ZAP JSON scan uploaded to DefectDojo"
         else
-          echo "⚠️ No HTML report found - skipping DefectDojo upload"
+          echo "⚠️ No XML or JSON report found - skipping DefectDojo upload"
+          echo "Available files:"
+          ls -la
         fi
         
     - name: Upload ZAP results
@@ -352,6 +373,7 @@ jobs:
           report_html.html
           report_json.json
           report_md.md
+          report_xml.xml
           
     - name: Security Complete
       run: |
