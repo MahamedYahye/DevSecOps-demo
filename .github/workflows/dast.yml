@@ -305,41 +305,71 @@ jobs:
         kubectl port-forward svc/flask-app 8080:80 -n flask-app &
         sleep 5
         
-    # Eenvoudige ZAP scan - alleen XML en HTML
+    # Simpele ZAP scan - laat ZAP zelf de bestanden maken
     - name: Run ZAP DAST Scan
       run: |
         echo "🚀 Starting ZAP DAST scan..."
         
-        # Maak lokale directory voor output
-        mkdir -p zap-output
-        
-        # Run ZAP scan met correcte volume mapping
+        # Run ZAP baseline zonder custom output - laat ZAP het zelf regelen
         docker run --rm \
-          -v $PWD/zap-output:/zap/wrk/:rw \
+          -v $PWD:/zap/wrk/:rw \
           --network=host \
           ghcr.io/zaproxy/zaproxy:stable \
           zap-baseline.py \
           -t http://localhost:8080 \
-          -x /zap/wrk/zap-report.xml \
-          -r /zap/wrk/zap-report.html \
           -a \
           || echo "ZAP scan completed (warnings expected)"
           
-        echo "📋 Generated reports:"
-        ls -la zap-output/
+        echo "📋 What did ZAP actually create?"
+        find . -name "*.xml" -o -name "*.html" -o -name "*.json" | head -10
         
-        # Verplaats bestanden naar root voor makkelijke toegang
-        if [ -f "zap-output/zap-report.xml" ]; then
-          cp zap-output/zap-report.xml ./
-          xml_size=$(stat -c%s "zap-report.xml" 2>/dev/null || stat -f%z "zap-report.xml" 2>/dev/null)
-          echo "📄 XML report: ${xml_size} bytes"
+        echo "📂 Directory contents:"
+        ls -la
+        
+        # Check for any ZAP reports in standard locations
+        if [ -f "report_html.html" ]; then
+          echo "✅ Found standard HTML report"
+          cp report_html.html zap-report.html
         fi
         
-        if [ -f "zap-output/zap-report.html" ]; then
-          cp zap-output/zap-report.html ./
-          html_size=$(stat -c%s "zap-report.html" 2>/dev/null || stat -f%z "zap-report.html" 2>/dev/null)
-          echo "📄 HTML report: ${html_size} bytes"
+        if [ -f "report_xml.xml" ]; then
+          echo "✅ Found standard XML report"  
+          cp report_xml.xml zap-report.xml
         fi
+        
+        # If no standard reports, try to generate XML manually with curl
+        if [ ! -f "zap-report.xml" ]; then
+          echo "🔧 No XML found, trying ZAP daemon approach..."
+          
+          # Start ZAP daemon
+          docker run -d --name zap-daemon \
+            -p 8090:8090 \
+            --network=host \
+            ghcr.io/zaproxy/zaproxy:stable \
+            zap.sh -daemon -host 0.0.0.0 -port 8090 -config api.disablekey=true
+            
+          sleep 10
+          
+          # Quick scan and export
+          curl -s "http://localhost:8090/JSON/spider/action/scan/?url=http://localhost:8080"
+          sleep 15
+          curl -s "http://localhost:8090/OTHER/core/other/xmlreport/" > zap-report.xml
+          curl -s "http://localhost:8090/OTHER/core/other/htmlreport/" > zap-report.html
+          
+          # Cleanup
+          docker stop zap-daemon || true
+          docker rm zap-daemon || true
+        fi
+        
+        echo "📄 Final report status:"
+        for file in zap-report.xml zap-report.html; do
+          if [ -f "$file" ]; then
+            size=$(stat -c%s "$file" 2>/dev/null || stat -f%z "$file" 2>/dev/null)
+            echo "  $file: ${size} bytes"
+          else
+            echo "  $file: not found"
+          fi
+        done
         
     - name: Upload to DefectDojo
       if: always()
