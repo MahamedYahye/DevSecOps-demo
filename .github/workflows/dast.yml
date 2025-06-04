@@ -192,6 +192,89 @@
 #         echo "🔒 DAST scan completed!"
 #         echo "✅ No Kubernetes complexity - just simple Docker!"
 
+# name: DevSecOps DAST Pipeline
+
+# on:
+#   push:
+#     branches: [ main ]
+#   pull_request:
+#     branches: [ main ]
+#   workflow_dispatch:
+
+# jobs:
+#   dast-security-scan:
+#     runs-on: ubuntu-latest
+
+#     steps:
+#     - name: Checkout code
+#       uses: actions/checkout@v4
+
+#     - name: Setup kubectl
+#       run: |
+#         mkdir -p ~/.kube
+#         echo "${{ secrets.KUBECONFIG }}" | base64 -d > ~/.kube/config
+#         chmod 600 ~/.kube/config
+
+#     - name: Wait for Flask app
+#       run: |
+#         kubectl wait --for=condition=available deployment/flask-app -n flask-app --timeout=300s
+
+#     - name: Setup port forward
+#       run: |
+#         kubectl port-forward svc/flask-app 8080:80 -n flask-app &
+#         sleep 5
+#         echo "Port forward active on localhost:8080"
+#         curl -I http://localhost:8080
+
+#     - name: Run OWASP ZAP Baseline Scan (GitHub Action)
+#       uses: zaproxy/action-baseline@v0.10.0
+#       with:
+#         target: 'http://localhost:8080'
+#         fail_action: false
+#         report_file: zap-report.html
+#         xml_report_file: zap-report.xml
+#       continue-on-error: true
+
+#     # Dit is de fix: upload artifact stap, zonder underscore in naam!
+#     - name: Upload ZAP report artifact (HTML en XML)
+#       if: always()
+#       uses: actions/upload-artifact@v4
+#       with:
+#         name: zap-report
+#         path: |
+#           zap-report.html
+#           zap-report.xml
+
+#     - name: Upload ZAP report to DefectDojo
+#       if: always()
+#       run: |
+#         if [ -f "zap-report.xml" ]; then
+#           echo "📤 Uploading XML scan results to DefectDojo..."
+#           RESPONSE=$(curl -s -w "%{http_code}" -X POST "${{ secrets.DEFECTDOJO_URL }}/api/v2/import-scan/" \
+#             -H "Authorization: Token ${{ secrets.DEFECTDOJO_TOKEN }}" \
+#             -F "engagement=${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}" \
+#             -F "scan_type=ZAP Scan" \
+#             -F "file=@zap-report.xml" \
+#             -F "active=true" \
+#             -F "verified=true" \
+#             -F "test_title=DAST-Pipeline-${{ github.run_id }}" \
+#             -F "branch_tag=${{ github.ref_name }}" \
+#             -F "commit_hash=${{ github.sha }}")
+#           HTTP_CODE=$(echo "$RESPONSE" | tail -c 4)
+#           if [ "$HTTP_CODE" -eq 201 ] || [ "$HTTP_CODE" -eq 200 ]; then
+#             echo "✅ Successfully uploaded to DefectDojo"
+#           else
+#             echo "⚠️ DefectDojo upload failed with HTTP code: $HTTP_CODE"
+#             echo "Response: $RESPONSE"
+#           fi
+#         else
+#           echo "⚠️ No XML report found - skipping DefectDojo upload"
+#         fi
+
+#     - name: Security Complete
+#       run: |
+#         echo "🔒 DAST scan completed!"
+#         echo "✅ OWASP ZAP GitHub Action, artifact, en DefectDojo upload zijn klaar."
 name: DevSecOps DAST Pipeline
 
 on:
@@ -202,11 +285,11 @@ on:
   workflow_dispatch:
 
 jobs:
-  dast-security-scan:
+  dast-scan:
     runs-on: ubuntu-latest
-
+    
     steps:
-    - name: Checkout code
+    - name: Checkout
       uses: actions/checkout@v4
 
     - name: Setup kubectl
@@ -215,63 +298,32 @@ jobs:
         echo "${{ secrets.KUBECONFIG }}" | base64 -d > ~/.kube/config
         chmod 600 ~/.kube/config
 
-    - name: Wait for Flask app
-      run: |
-        kubectl wait --for=condition=available deployment/flask-app -n flask-app --timeout=300s
+    - name: Wait for app
+      run: kubectl wait --for=condition=available deployment/flask-app -n flask-app --timeout=300s
 
-    - name: Setup port forward
+    - name: Port forward
       run: |
         kubectl port-forward svc/flask-app 8080:80 -n flask-app &
         sleep 5
-        echo "Port forward active on localhost:8080"
-        curl -I http://localhost:8080
 
-    - name: Run OWASP ZAP Baseline Scan (GitHub Action)
-      uses: zaproxy/action-baseline@v0.10.0
+    - name: ZAP Baseline Scan
+      uses: zaproxy/action-baseline@v0.12.0
       with:
         target: 'http://localhost:8080'
+        rules_file_name: '.zap/rules.tsv'
+        cmd_options: '-a'
+        issue_title: DAST Security Scan
         fail_action: false
-        report_file: zap-report.html
-        xml_report_file: zap-report.xml
-      continue-on-error: true
 
-    # Dit is de fix: upload artifact stap, zonder underscore in naam!
-    - name: Upload ZAP report artifact (HTML en XML)
-      if: always()
+    - name: Upload ZAP results
       uses: actions/upload-artifact@v4
-      with:
-        name: zap-report
-        path: |
-          zap-report.html
-          zap-report.xml
-
-    - name: Upload ZAP report to DefectDojo
       if: always()
-      run: |
-        if [ -f "zap-report.xml" ]; then
-          echo "📤 Uploading XML scan results to DefectDojo..."
-          RESPONSE=$(curl -s -w "%{http_code}" -X POST "${{ secrets.DEFECTDOJO_URL }}/api/v2/import-scan/" \
-            -H "Authorization: Token ${{ secrets.DEFECTDOJO_TOKEN }}" \
-            -F "engagement=${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}" \
-            -F "scan_type=ZAP Scan" \
-            -F "file=@zap-report.xml" \
-            -F "active=true" \
-            -F "verified=true" \
-            -F "test_title=DAST-Pipeline-${{ github.run_id }}" \
-            -F "branch_tag=${{ github.ref_name }}" \
-            -F "commit_hash=${{ github.sha }}")
-          HTTP_CODE=$(echo "$RESPONSE" | tail -c 4)
-          if [ "$HTTP_CODE" -eq 201 ] || [ "$HTTP_CODE" -eq 200 ]; then
-            echo "✅ Successfully uploaded to DefectDojo"
-          else
-            echo "⚠️ DefectDojo upload failed with HTTP code: $HTTP_CODE"
-            echo "Response: $RESPONSE"
-          fi
-        else
-          echo "⚠️ No XML report found - skipping DefectDojo upload"
-        fi
+      with:
+        name: zap-reports
+        path: report_html.html
 
     - name: Security Complete
       run: |
-        echo "🔒 DAST scan completed!"
-        echo "✅ OWASP ZAP GitHub Action, artifact, en DefectDojo upload zijn klaar."
+        echo "🔒 DAST security scan completed using official ZAP Action"
+        echo "📊 Check the ZAP reports in artifacts"
+        echo "✅ Pipeline complete!"
