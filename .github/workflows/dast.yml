@@ -310,9 +310,12 @@ jobs:
       run: |
         echo "🚀 Starting ZAP DAST scan..."
         
-        # Run ZAP scan met XML (voor DefectDojo) en HTML (voor mensen)
+        # Maak lokale directory voor output
+        mkdir -p zap-output
+        
+        # Run ZAP scan met correcte volume mapping
         docker run --rm \
-          -v $PWD:/zap/wrk/:rw \
+          -v $PWD/zap-output:/zap/wrk/:rw \
           --network=host \
           ghcr.io/zaproxy/zaproxy:stable \
           zap-baseline.py \
@@ -323,15 +326,17 @@ jobs:
           || echo "ZAP scan completed (warnings expected)"
           
         echo "📋 Generated reports:"
-        ls -la zap-report.*
+        ls -la zap-output/
         
-        # Check file sizes
-        if [ -f "zap-report.xml" ]; then
+        # Verplaats bestanden naar root voor makkelijke toegang
+        if [ -f "zap-output/zap-report.xml" ]; then
+          cp zap-output/zap-report.xml ./
           xml_size=$(stat -c%s "zap-report.xml" 2>/dev/null || stat -f%z "zap-report.xml" 2>/dev/null)
           echo "📄 XML report: ${xml_size} bytes"
         fi
         
-        if [ -f "zap-report.html" ]; then
+        if [ -f "zap-output/zap-report.html" ]; then
+          cp zap-output/zap-report.html ./
           html_size=$(stat -c%s "zap-report.html" 2>/dev/null || stat -f%z "zap-report.html" 2>/dev/null)
           echo "📄 HTML report: ${html_size} bytes"
         fi
