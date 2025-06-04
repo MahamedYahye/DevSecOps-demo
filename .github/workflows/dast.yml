@@ -222,26 +222,34 @@ jobs:
       run: |
         kubectl port-forward svc/flask-app 8080:80 -n flask-app &
         sleep 5
+        curl -I http://localhost:8080
 
     - name: ZAP baseline scan
       run: |
         mkdir -p reports
         
-        # Run ZAP scan with XML output for DefectDojo
+        # Run ZAP scan with XML output for DefectDojo (let op: alleen bestandsnaam!)
         docker run --rm --network=host \
           -v $(pwd)/reports:/zap/wrk \
           zaproxy/zap-stable \
           zap-baseline.py \
           -t http://localhost:8080 \
-          -x /zap/wrk/zap-report.xml \
-          || SCAN_EXIT_CODE=$?
-        
-        echo "ZAP_EXIT_CODE=${SCAN_EXIT_CODE:-0}" >> $GITHUB_ENV
+          -x zap-report.xml
+        SCAN_EXIT_CODE=$?
+        echo "ZAP scan exit code: $SCAN_EXIT_CODE"
+        ls -l reports
+        echo "ZAP_EXIT_CODE=${SCAN_EXIT_CODE}" >> $GITHUB_ENV
+
+    - name: Debug: check ZAP report
+      run: |
+        echo "Inhoud reports folder:"
+        ls -la reports
+        echo "---------------------"
+        cat reports/zap-report.xml || echo "Geen rapport aanwezig"
 
     - name: Process scan results
       run: |
         echo "ZAP scan completed with exit code: ${ZAP_EXIT_CODE:-0}"
-        
         # Process results based on exit code
         case ${ZAP_EXIT_CODE:-0} in
           0)
