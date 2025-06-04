@@ -1,52 +1,4 @@
-# # This workflow runs a DAST scan using OWASP ZAP after the "Build, Scan and Push" workflow completes successfully.
-# on:
-#   push:
-#     branches: [ main ]
-#   pull_request:
-#     branches: [ main ]
-#   workflow_dispatch:
-
-# jobs:
-#   dast-scan:
-#     runs-on: ubuntu-latest
-    
-#     steps:
-#     - name: Checkout
-#       uses: actions/checkout@v4
-      
-#     - name: Setup kubectl
-#       run: |
-#         mkdir -p ~/.kube
-#         echo "${{ secrets.KUBECONFIG }}" | base64 -d > ~/.kube/config
-#         chmod 600 ~/.kube/config
-        
-#     - name: Wait for app
-#       run: kubectl wait --for=condition=available deployment/flask-app -n flask-app --timeout=300s
-      
-#     - name: Port forward
-#       run: |
-#         kubectl port-forward svc/flask-app 8080:80 -n flask-app &
-#         sleep 5
-        
-#     - name: ZAP Scan
-#       run: |
-#         docker run --rm -v $PWD:/zap/wrk/:rw --user root --network=host \
-#           ghcr.io/zaproxy/zaproxy:stable \
-#           zap-baseline.py -t http://localhost:8080 -J report.json -r report.html -x report.xml -a \
-#           || true
-        
-#         ls -la *.xml *.html *.json
-        
-#     - name: Upload to DefectDojo
-#       if: always()
-#       run: |
-#         curl -X POST "${{ secrets.DEFECTDOJO_URL }}/api/v2/import-scan/" \
-#           -H "Authorization: Token ${{ secrets.DEFECTDOJO_API_KEY }}" \
-#           -F "scan_date=$(date +%Y-%m-%d)" \
-#           -F "scan_type=ZAP Scan" \
-#           -F "engagement=${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}" \
-#           -F "file=@report.xml"
-
+# This workflow runs a DAST scan using OWASP ZAP after the "Build, Scan and Push" workflow completes successfully.
 name: DevSecOps DAST Pipeline
 on:
   workflow_run:
@@ -60,34 +12,34 @@ jobs:
   dast-scan:
     runs-on: ubuntu-latest
     if: ${{ github.event.workflow_run.conclusion == 'success' }}  # Alleen als build succesvol was
-    
+
     steps:
     - name: Checkout
       uses: actions/checkout@v4
-      
+
     - name: Setup kubectl
       run: |
         mkdir -p ~/.kube
         echo "${{ secrets.KUBECONFIG }}" | base64 -d > ~/.kube/config
         chmod 600 ~/.kube/config
-        
+
     - name: Wait for app
       run: kubectl wait --for=condition=available deployment/flask-app -n flask-app --timeout=300s
-      
+
     - name: Port forward
       run: |
         kubectl port-forward svc/flask-app 8080:80 -n flask-app &
         sleep 5
-        
+
     - name: ZAP Scan
       run: |
         docker run --rm -v $PWD:/zap/wrk/:rw --user root --network=host \
           ghcr.io/zaproxy/zaproxy:stable \
           zap-baseline.py -t http://localhost:8080 -J report.json -r report.html -x report.xml -a \
           || true
-        
+
         ls -la *.xml *.html *.json
-        
+
     - name: Upload to DefectDojo
       if: always()
       run: |

@@ -1,330 +1,580 @@
-{% extends 'layout.html' %}
-{% block content %}
-<div class="test-container">
-    <div class="test-header">
-        <h1>DevSecOps Pipeline Test</h1>
-        <p class="test-subtitle">Alle stappen in de security pipeline zijn succesvol uitgevoerd!!</p>
-    </div>
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DevSecOps Demo - Security Pipeline</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        :root {
+            --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --success-gradient: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+            --warning-gradient: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            --dark-gradient: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+        }
 
-    <div class="pipeline-visual">
-        <div class="pipeline-steps">
-            <div class="step">
-                <div class="step-icon">
-                    <i class="fas fa-code"></i>
-                </div>
-                <div class="step-title">SAST</div>
-                <div class="step-description">
-                    <strong>Statische code analyse</strong><br>
-                    Semgrep, Bandit & GitLeaks
-                </div>
-                <div class="tooltip-content">
-                    <ul>
-                        <li>SQL injectie checks</li>
-                        <li>XSS detectie</li>
-                        <li>Hardcoded credentials</li>
-                    </ul>
-                </div>
-            </div>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
 
-            <div class="step">
-                <div class="step-icon">
-                    <i class="fas fa-file-code"></i>
-                </div>
-                <div class="step-title">SCA</div>
-                <div class="step-description">
-                    <strong>Software compositie analyse</strong><br>
-                    Dependency check
-                </div>
-                <div class="tooltip-content">
-                    <ul>
-                        <li>Dependency scanning</li>
-                        <li>Versie verificatie</li>
-                        <li>License analyse</li>
-                    </ul>
-                </div>
-            </div>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #2c3e50;
+            overflow-x: hidden;
+        }
 
-            <div class="step">
-                <div class="step-icon">
-                    <i class="fas fa-box"></i>
-                </div>
-                <div class="step-title">Container</div>
-                <div class="step-description">
-                    <strong>Container security scan</strong><br>
-                    Syft & Grype
-                </div>
-                <div class="tooltip-content">
-                    <ul>
-                        <li>SBOM generatie</li>
-                        <li>Container scan</li>
-                        <li>OS vulnerabilities</li>
-                    </ul>
-                </div>
-            </div>
+        .floating-particles {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 0;
+        }
 
-            <div class="step">
-                <div class="step-icon">
-                    <i class="fas fa-robot"></i>
-                </div>
-                <div class="step-title">DAST</div>
-                <div class="step-description">
-                    <strong>Dynamische applicatie scan</strong><br>
-                    OWASP ZAP
-                </div>
-                <div class="tooltip-content">
-                    <ul>
-                        <li>API security</li>
-                        <li>Runtime testing</li>
-                        <li>Security headers</li>
-                    </ul>
-                </div>
-            </div>
+        .particle {
+            position: absolute;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 50%;
+            animation: float 6s infinite linear;
+        }
 
-            <div class="step">
-                <div class="step-icon">
-                    <i class="fas fa-rocket"></i>
-                </div>
-                <div class="step-title">Deploy</div>
-                <div class="step-description">
-                    <strong>GitOps deployment</strong><br>
-                    Argo CD
-                </div>
-                <div class="tooltip-content">
-                    <ul>
-                        <li>Kubernetes deployment</li>
-                        <li>Zero-downtime</li>
-                        <li>Sealed secrets</li>
-                    </ul>
-                </div>
-            </div>
-        </div>
-    </div>
+        @keyframes float {
+            0% { transform: translateY(100vh) rotate(0deg); opacity: 0; }
+            10% { opacity: 1; }
+            90% { opacity: 1; }
+            100% { transform: translateY(-100px) rotate(360deg); opacity: 0; }
+        }
 
-    <div class="security-metrics">
-        <div class="metric-card">
-            <div class="metric-value">0</div>
-            <div class="metric-label">Kritieke kwetsbaarheden</div>
-        </div>
-        <div class="metric-card">
-            <div class="metric-value">0</div>
-            <div class="metric-label">Hoge kwetsbaarheden</div>
-        </div>
-        <div class="metric-card">
-            <div class="metric-value">100%</div>
-            <div class="metric-label">Security scan pass rate</div>
-        </div>
-    </div>
-
-    <div class="test-actions">
-        <a href="/" class="btn btn-primary">
-            <i class="fas fa-arrow-left me-2"></i> Terug naar Home
-        </a>
-    </div>
-</div>
-
-<style>
-    .test-container {
-        width: 100%;
-        text-align: center;
-    }
-
-    .test-header {
-        margin-bottom: 2rem;
-    }
-
-    .test-header h1 {
-        font-size: 2.5rem;
-        font-weight: 700;
-        margin-bottom: 0.5rem;
-    }
-
-    .test-subtitle {
-        font-size: 1.2rem;
-        color: #6c757d;
-    }
-
-    .pipeline-visual {
-        margin-bottom: 3rem;
-    }
-
-    .pipeline-steps {
-        display: flex;
-        justify-content: space-between;
-        position: relative;
-        margin: 0 auto;
-    }
-
-    .pipeline-steps:before {
-        content: '';
-        position: absolute;
-        top: 40px;
-        left: 0;
-        width: 100%;
-        height: 4px;
-        background-color: #e9ecef;
-        z-index: -1;
-    }
-
-    .step {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        position: relative;
-        width: 20%;
-    }
-
-    .step-icon {
-        width: 80px;
-        height: 80px;
-        border-radius: 50%;
-        background-color: white;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        margin-bottom: 1rem;
-        font-size: 2rem;
-        color: #3498db;
-        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
-        border: 4px solid #3498db;
-        position: relative;
-    }
-
-    .step-icon:after {
-        content: '✓';
-        position: absolute;
-        top: -10px;
-        right: -10px;
-        width: 30px;
-        height: 30px;
-        background-color: #2ecc71;
-        color: white;
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 1rem;
-        box-shadow: 0 3px 8px rgba(46, 204, 113, 0.4);
-    }
-
-    .step-title {
-        font-weight: 600;
-        font-size: 1.1rem;
-        margin-bottom: 0.5rem;
-    }
-
-    .step-description {
-        font-size: 0.9rem;
-        color: #6c757d;
-        max-width: 150px;
-        margin-bottom: 0.5rem;
-    }
-
-    .tooltip-content {
-        display: none;
-        position: absolute;
-        top: 100%;
-        left: 50%;
-        transform: translateX(-50%);
-        background-color: white;
-        border-radius: 8px;
-        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
-        padding: 1rem;
-        z-index: 10;
-        width: 200px;
-        text-align: left;
-        margin-top: 1rem;
-    }
-
-    .tooltip-content:before {
-        content: '';
-        position: absolute;
-        top: -10px;
-        left: 50%;
-        transform: translateX(-50%);
-        border-left: 10px solid transparent;
-        border-right: 10px solid transparent;
-        border-bottom: 10px solid white;
-    }
-
-    .tooltip-content ul {
-        margin: 0;
-        padding-left: 1.2rem;
-    }
-
-    .tooltip-content li {
-        margin-bottom: 0.3rem;
-        font-size: 0.9rem;
-    }
-
-    .step:hover .tooltip-content {
-        display: block;
-    }
-
-    .security-metrics {
-        display: flex;
-        justify-content: center;
-        gap: 2rem;
-        margin-bottom: 3rem;
-    }
-
-    .metric-card {
-        background-color: #f8f9fa;
-        border-radius: 10px;
-        padding: 1.5rem;
-        text-align: center;
-        width: 220px;
-        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.05);
-    }
-
-    .metric-value {
-        font-size: 2.5rem;
-        font-weight: 700;
-        color: #3498db;
-        margin-bottom: 0.5rem;
-    }
-
-    .metric-label {
-        font-size: 1rem;
-        color: #6c757d;
-    }
-
-    .test-actions {
-        margin-top: 2rem;
-    }
-
-    @media (max-width: 992px) {
-        .pipeline-steps {
-            flex-wrap: wrap;
+        .main-container {
+            position: relative;
+            z-index: 1;
+            padding: 2rem;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
             justify-content: center;
         }
 
-        .step {
-            width: 30%;
-            margin-bottom: 2rem;
-        }
-
-        .pipeline-steps:before {
-            display: none;
-        }
-
-        .security-metrics {
-            flex-wrap: wrap;
-        }
-
-        .metric-card {
-            width: 45%;
-            margin-bottom: 1rem;
-        }
-    }
-
-    @media (max-width: 768px) {
-        .step {
-            width: 45%;
-        }
-
-        .metric-card {
+        .content-wrapper {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
+            padding: 3rem;
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            max-width: 1200px;
             width: 100%;
+            animation: slideInUp 1s ease-out;
         }
-    }
-</style>
-{% endblock %}
+
+        @keyframes slideInUp {
+            from { opacity: 0; transform: translateY(50px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 3rem;
+        }
+
+        .header h1 {
+            font-size: 3rem;
+            font-weight: 800;
+            background: var(--primary-gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 1rem;
+            animation: glow 2s ease-in-out infinite alternate;
+        }
+
+        @keyframes glow {
+            from { filter: drop-shadow(0 0 20px rgba(102, 126, 234, 0.5)); }
+            to { filter: drop-shadow(0 0 30px rgba(118, 75, 162, 0.8)); }
+        }
+
+        .header p {
+            font-size: 1.3rem;
+            color: #6c757d;
+            font-weight: 500;
+        }
+
+        .pipeline-container {
+            margin-bottom: 3rem;
+        }
+
+        .pipeline-steps {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: relative;
+            margin: 2rem 0;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .pipeline-line {
+            position: absolute;
+            top: 50px;
+            left: 10%;
+            right: 10%;
+            height: 4px;
+            background: linear-gradient(90deg, #e9ecef 0%, #667eea 50%, #e9ecef 100%);
+            border-radius: 2px;
+            z-index: 0;
+            animation: lineGlow 3s ease-in-out infinite;
+        }
+
+        @keyframes lineGlow {
+            0%, 100% { box-shadow: 0 0 5px rgba(102, 126, 234, 0.3); }
+            50% { box-shadow: 0 0 20px rgba(102, 126, 234, 0.8); }
+        }
+
+        .step {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            position: relative;
+            z-index: 1;
+            flex: 1;
+            min-width: 200px;
+            animation: fadeInUp 0.8s ease-out;
+            animation-fill-mode: both;
+        }
+
+        .step:nth-child(1) { animation-delay: 0.2s; }
+        .step:nth-child(2) { animation-delay: 0.4s; }
+        .step:nth-child(3) { animation-delay: 0.6s; }
+        .step:nth-child(4) { animation-delay: 0.8s; }
+        .step:nth-child(5) { animation-delay: 1.0s; }
+
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(30px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .step-icon {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            background: var(--primary-gradient);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2.5rem;
+            color: white;
+            margin-bottom: 1rem;
+            box-shadow: 0 15px 30px rgba(102, 126, 234, 0.4);
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .step-icon::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+            transition: left 0.5s ease;
+        }
+
+        .step:hover .step-icon::before {
+            left: 100%;
+        }
+
+        .step-icon::after {
+            content: '✓';
+            position: absolute;
+            top: -5px;
+            right: -5px;
+            width: 35px;
+            height: 35px;
+            background: var(--success-gradient);
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+            font-weight: bold;
+            box-shadow: 0 5px 15px rgba(17, 153, 142, 0.4);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); }
+        }
+
+        .step:hover .step-icon {
+            transform: translateY(-10px) scale(1.05);
+            box-shadow: 0 20px 40px rgba(102, 126, 234, 0.6);
+        }
+
+        .step-title {
+            font-weight: 700;
+            font-size: 1.3rem;
+            margin-bottom: 0.5rem;
+            color: #2c3e50;
+        }
+
+        .step-description {
+            text-align: center;
+            color: #6c757d;
+            font-size: 0.95rem;
+            line-height: 1.4;
+        }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 2rem;
+            margin-bottom: 3rem;
+        }
+
+        .metric-card {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border-radius: 15px;
+            padding: 2rem;
+            text-align: center;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .metric-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: var(--success-gradient);
+            transform: translateX(-100%);
+            transition: transform 0.3s ease;
+        }
+
+        .metric-card:hover::before {
+            transform: translateX(0);
+        }
+
+        .metric-card:hover {
+            transform: translateY(-10px);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+        }
+
+        .metric-value {
+            font-size: 3rem;
+            font-weight: 800;
+            color: #2c3e50;
+            margin-bottom: 0.5rem;
+            animation: countUp 2s ease-out;
+        }
+
+        @keyframes countUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .metric-label {
+            font-size: 1.1rem;
+            color: #6c757d;
+            font-weight: 500;
+        }
+
+        .api-demo {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border-radius: 15px;
+            padding: 2rem;
+            margin-top: 2rem;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+        }
+
+        .api-demo h3 {
+            color: #2c3e50;
+            margin-bottom: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .api-button {
+            background: var(--primary-gradient);
+            color: white;
+            border: none;
+            padding: 0.8rem 1.5rem;
+            border-radius: 10px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin: 0.5rem;
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
+        }
+
+        .api-button:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 25px rgba(102, 126, 234, 0.5);
+        }
+
+        .response-area {
+            background: #2c3e50;
+            color: #ecf0f1;
+            border-radius: 10px;
+            padding: 1rem;
+            font-family: 'Courier New', monospace;
+            margin-top: 1rem;
+            min-height: 100px;
+            overflow-x: auto;
+        }
+
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 2rem;
+            }
+
+            .pipeline-steps {
+                flex-direction: column;
+                gap: 2rem;
+            }
+
+            .pipeline-line {
+                display: none;
+            }
+
+            .step {
+                min-width: auto;
+                width: 100%;
+            }
+
+            .metrics-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="floating-particles" id="particles"></div>
+
+    <div class="main-container">
+        <div class="content-wrapper">
+            <div class="header">
+                <h1>DevSecOps Security Pipeline</h1>
+                <p>Volledige beveiligingspipeline succesvol uitgevoerd!</p>
+            </div>
+
+            <div class="pipeline-container">
+                <div class="pipeline-steps">
+                    <div class="pipeline-line"></div>
+
+                    <div class="step">
+                        <div class="step-icon">
+                            <i class="fas fa-code"></i>
+                        </div>
+                        <div class="step-title">SAST</div>
+                        <div class="step-description">
+                            Statische code analyse<br>
+                            <small>Semgrep, Bandit & GitLeaks</small>
+                        </div>
+                    </div>
+
+                    <div class="step">
+                        <div class="step-icon">
+                            <i class="fas fa-file-code"></i>
+                        </div>
+                        <div class="step-title">SCA</div>
+                        <div class="step-description">
+                            Software compositie analyse<br>
+                            <small>Dependency check</small>
+                        </div>
+                    </div>
+
+                    <div class="step">
+                        <div class="step-icon">
+                            <i class="fas fa-box"></i>
+                        </div>
+                        <div class="step-title">Container</div>
+                        <div class="step-description">
+                            Container security scan<br>
+                            <small>Syft & Grype</small>
+                        </div>
+                    </div>
+
+                    <div class="step">
+                        <div class="step-icon">
+                            <i class="fas fa-robot"></i>
+                        </div>
+                        <div class="step-title">DAST</div>
+                        <div class="step-description">
+                            Dynamische applicatie scan<br>
+                            <small>OWASP ZAP</small>
+                        </div>
+                    </div>
+
+                    <div class="step">
+                        <div class="step-icon">
+                            <i class="fas fa-rocket"></i>
+                        </div>
+                        <div class="step-title">Deploy</div>
+                        <div class="step-description">
+                            GitOps deployment<br>
+                            <small>Argo CD</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="metrics-grid">
+                <div class="metric-card">
+                    <div class="metric-value">2</div>
+                    <div class="metric-label">Intentionele Vulnerabilities</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">0</div>
+                    <div class="metric-label">Kritieke Issues</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">100%</div>
+                    <div class="metric-label">Pipeline Success</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">42</div>
+                    <div class="metric-label">Security Tests</div>
+                </div>
+            </div>
+
+            <div class="api-demo">
+                <h3><i class="fas fa-bug"></i> Vulnerability Demo</h3>
+                <p>Test de intentionele vulnerabilities voor DAST/security training:</p>
+
+                <button class="api-button" onclick="testSQLInjection()">
+                    <i class="fas fa-database"></i> Test SQL Injection
+                </button>
+
+                <button class="api-button" onclick="testIDOR()">
+                    <i class="fas fa-users"></i> Test IDOR (User 1)
+                </button>
+
+                <button class="api-button" onclick="testIDORExploit()">
+                    <i class="fas fa-user-secret"></i> Test IDOR (User 2)
+                </button>
+
+                <button class="api-button" onclick="getAllUsers()">
+                    <i class="fas fa-list"></i> List All Users
+                </button>
+
+                <div id="response" class="response-area">
+                    Klik op een knop om de API te testen...
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Floating particles animation
+        function createParticles() {
+            const particlesContainer = document.getElementById('particles');
+            const particleCount = 50;
+
+            for (let i = 0; i < particleCount; i++) {
+                const particle = document.createElement('div');
+                particle.classList.add('particle');
+
+                const size = Math.random() * 6 + 2;
+                particle.style.width = `${size}px`;
+                particle.style.height = `${size}px`;
+                particle.style.left = `${Math.random() * 100}%`;
+                particle.style.animationDelay = `${Math.random() * 6}s`;
+                particle.style.animationDuration = `${6 + Math.random() * 4}s`;
+
+                particlesContainer.appendChild(particle);
+            }
+        }
+
+        // API testing functions
+        async function testSQLInjection() {
+            const response = document.getElementById('response');
+            response.textContent = 'Testing SQL Injection...';
+
+            try {
+                const result = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        username: "admin' OR '1'='1",
+                        password: "anything"
+                    })
+                });
+
+                const data = await result.json();
+                response.textContent = `SQL Injection Result:\n${JSON.stringify(data, null, 2)}`;
+            } catch (error) {
+                response.textContent = `Error: ${error.message}`;
+            }
+        }
+
+        async function testIDOR() {
+            const response = document.getElementById('response');
+            response.textContent = 'Testing IDOR (User 1)...';
+
+            try {
+                const result = await fetch('/api/users?id=1');
+                const data = await result.json();
+                response.textContent = `IDOR Result (User 1):\n${JSON.stringify(data, null, 2)}`;
+            } catch (error) {
+                response.textContent = `Error: ${error.message}`;
+            }
+        }
+
+        async function testIDORExploit() {
+            const response = document.getElementById('response');
+            response.textContent = 'Testing IDOR Exploit (User 2)...';
+
+            try {
+                const result = await fetch('/api/users?id=2');
+                const data = await result.json();
+                response.textContent = `IDOR Exploit Result (User 2):\n${JSON.stringify(data, null, 2)}`;
+            } catch (error) {
+                response.textContent = `Error: ${error.message}`;
+            }
+        }
+
+        async function getAllUsers() {
+            const response = document.getElementById('response');
+            response.textContent = 'Getting all users...';
+
+            try {
+                const result = await fetch('/api/users/all');
+                const data = await result.json();
+                response.textContent = `All Users:\n${JSON.stringify(data, null, 2)}`;
+            } catch (error) {
+                response.textContent = `Error: ${error.message}`;
+            }
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            createParticles();
+
+            // Add entrance animation to metric values
+            const metricValues = document.querySelectorAll('.metric-value');
+            metricValues.forEach((value, index) => {
+                setTimeout(() => {
+                    value.style.animation = 'countUp 1s ease-out';
+                }, index * 200);
+            });
+        });
+    </script>
+</body>
+</html>
