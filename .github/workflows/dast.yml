@@ -305,49 +305,19 @@ jobs:
         kubectl port-forward svc/flask-app 8080:80 -n flask-app &
         sleep 5
         
-    - name: Run ZAP Scan
+    - name: ZAP Scan
       run: |
-        # Maak reports directory met volledige rechten
-        mkdir -p reports
-        chmod 777 reports
-        
-        # Run ZAP scan
-        docker run --rm \
-          -v $PWD/reports:/zap/wrk/:rw \
-          --user root \
-          --network=host \
+        docker run --rm -v $PWD:/zap/wrk/:rw --user root --network=host \
           ghcr.io/zaproxy/zaproxy:stable \
-          zap-baseline.py \
-          -t http://localhost:8080 \
-          -J /zap/wrk/report.json \
-          -r /zap/wrk/report.html \
-          -x /zap/wrk/report.xml \
-          -a
-          
-        # Check wat er gemaakt is
-        ls -la reports/
+          zap-baseline.py -t http://localhost:8080 -J report.json -r report.html -x report.xml -a
+        
+        ls -la *.xml *.html *.json
         
     - name: Upload to DefectDojo
-      if: always()
       run: |
-        cd reports
-        
-        if [ -f "report.xml" ] && [ -s "report.xml" ]; then
-          echo "📤 Uploading XML to DefectDojo..."
-          curl -X POST "${{ secrets.DEFECTDOJO_URL }}/api/v2/import-scan/" \
-            -H "Authorization: Token ${{ secrets.DEFECTDOJO_API_KEY }}" \
-            -F "scan_date=$(date +%Y-%m-%d)" \
-            -F "scan_type=ZAP Scan" \
-            -F "engagement=${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}" \
-            -F "file=@report.xml"
-          echo "✅ Upload complete"
-        else
-          echo "❌ No XML file found"
-        fi
-        
-    - name: Upload Reports
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: zap-reports
-        path: reports/
+        curl -X POST "${{ secrets.DEFECTDOJO_URL }}/api/v2/import-scan/" \
+          -H "Authorization: Token ${{ secrets.DEFECTDOJO_API_KEY }}" \
+          -F "scan_date=$(date +%Y-%m-%d)" \
+          -F "scan_type=ZAP Scan" \
+          -F "engagement=${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}" \
+          -F "file=@report.xml"
