@@ -276,7 +276,6 @@
 #         echo "🔒 DAST scan completed!"
 #         echo "✅ OWASP ZAP GitHub Action, artifact, en DefectDojo upload zijn klaar."
 name: DevSecOps DAST Pipeline
-
 on:
   push:
     branches: [ main ]
@@ -291,39 +290,32 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@v4
-
+      
     - name: Setup kubectl
       run: |
         mkdir -p ~/.kube
         echo "${{ secrets.KUBECONFIG }}" | base64 -d > ~/.kube/config
         chmod 600 ~/.kube/config
-
+        
     - name: Wait for app
       run: kubectl wait --for=condition=available deployment/flask-app -n flask-app --timeout=300s
-
+      
     - name: Port forward
       run: |
         kubectl port-forward svc/flask-app 8080:80 -n flask-app &
         sleep 5
-
+        
+    # Enkele ZAP scan met correcte parameters
     - name: ZAP Baseline Scan
       uses: zaproxy/action-baseline@v0.12.0
       with:
         target: 'http://localhost:8080'
         cmd_options: '-a'
-        issue_title: DAST Security Scan
+        issue_title: 'DAST Security Scan'
         fail_action: false
-        create_issue: false
-        artifact_name: false
-
-    - name: ZAP Baseline Scan
-      uses: zaproxy/action-baseline@v0.12.0
-      with:
-        target: 'http://localhost:8080'
-        cmd_options: '-a'
-        issue_title: DAST Security Scan
-        fail_action: false
-
+        # Verwijder create_issue parameter (niet ondersteund)
+        # Verwijder artifact_name: false (veroorzaakt artifact upload error)
+        
     - name: Upload to DefectDojo
       if: always()
       run: |
@@ -333,13 +325,14 @@ jobs:
         if [ -f "report_html.html" ]; then
           echo "📤 Uploading ZAP scan to DefectDojo..."
           
+          # Fix de tags format - geen spaties, komma's of quotes
           curl -X POST "${{ secrets.DEFECTDOJO_URL }}/api/v2/import-scan/" \
             -H "Authorization: Token ${{ secrets.DEFECTDOJO_API_KEY }}" \
             -F "scan_date=$SCAN_DATE" \
             -F "scan_type=ZAP Scan" \
             -F "close_old_findings=true" \
             -F "test_title=ZAP DAST Scan $SCAN_DATE $SCAN_TIME" \
-            -F "tags=time_$SCAN_TIME,branch_${{ github.ref_name }}" \
+            -F "tags=time_${SCAN_TIME}_branch_${{ github.ref_name }}" \
             -F "description=DAST security scan from GitHub Actions pipeline" \
             -F "deduplication_on_engagement=true" \
             -F "engagement=${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}" \
@@ -349,7 +342,7 @@ jobs:
         else
           echo "⚠️ No HTML report found - skipping DefectDojo upload"
         fi
-
+        
     - name: Upload ZAP results
       uses: actions/upload-artifact@v4
       if: always()
@@ -359,12 +352,11 @@ jobs:
           report_html.html
           report_json.json
           report_md.md
-
+          
     - name: Security Complete
       run: |
         echo "🔒 DAST security scan completed using official ZAP Action"
         echo "📊 Results available in:"
-        echo "  - GitHub Issue #XX (auto-created)"
         echo "  - GitHub Artifacts (HTML/JSON reports)"
         echo "  - DefectDojo (centralized vulnerability management)"
         echo "✅ Complete DevSecOps pipeline with multiple outputs!"
