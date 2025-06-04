@@ -1,141 +1,4 @@
-
-# name: DevSecOps DAST Pipeline
-
-# on:
-#   push:
-#     branches: [ main ]
-#   pull_request:
-#     branches: [ main ]
-#   workflow_dispatch:  # Voor handmatig starten
-
-# jobs:
-#   dast-security-scan:
-#     runs-on: ubuntu-latest
-    
-#     steps:
-#     - name: Checkout code
-#       uses: actions/checkout@v4
-
-#     - name: Setup kubectl
-#       run: |
-#         mkdir -p ~/.kube
-#         echo "${{ secrets.KUBECONFIG }}" | base64 -d > ~/.kube/config
-#         chmod 600 ~/.kube/config
-
-#     - name: Test kubectl connection
-#       run: |
-#         kubectl get nodes
-#         kubectl get pods -n flask-app
-
-#     - name: Wait for Flask app to be ready
-#       run: |
-#         kubectl wait --for=condition=available deployment/flask-app -n flask-app --timeout=300s
-#         echo "Flask app is ready for scanning"
-
-#     - name: Run OWASP ZAP DAST scan using Job
-#       run: |
-#         echo "Starting DAST security scan using Kubernetes Job..."
-        
-#         # Create ZAP scan job
-#         cat <<EOF | kubectl apply -f -
-#         apiVersion: batch/v1
-#         kind: Job
-#         metadata:
-#           name: zap-scan-${{ github.run_id }}
-#           namespace: flask-app
-#         spec:
-#           template:
-#             spec:
-#               containers:
-#               - name: zap-scanner
-#                 image: zaproxy/zap-stable
-#                 command: ["zap-baseline.py"]
-#                 args: [
-#                   "-t", "http://flask-app.flask-app.svc.cluster.local:80",
-#                   "-J", "/zap/wrk/zap-report.json",
-#                   "-r", "/zap/wrk/zap-report.html",
-#                   "-x", "/zap/wrk/zap-report.xml",
-#                   "-I"
-#                 ]
-#                 volumeMounts:
-#                 - name: scan-results
-#                   mountPath: /zap/wrk
-#               volumes:
-#               - name: scan-results
-#                 emptyDir: {}
-#               restartPolicy: Never
-#           backoffLimit: 1
-#         EOF
-        
-#         echo "ZAP Job created, waiting for completion..."
-        
-#         # Wait for job to complete (max 10 minutes)
-#         kubectl wait --for=condition=complete job/zap-scan-${{ github.run_id }} -n flask-app --timeout=600s
-        
-#         echo "ZAP scan completed!"
-
-#     - name: Get ZAP scan results
-#       run: |
-#         echo ""
-#         echo "=== ZAP SECURITY SCAN RESULTS ==="
-#         kubectl logs job/zap-scan-${{ github.run_id }} -n flask-app
-        
-#         # Extract security summary
-#         LOGS=$(kubectl logs job/zap-scan-${{ github.run_id }} -n flask-app)
-#         echo ""
-#         echo "=== SECURITY SUMMARY ==="
-        
-#         # Check for failures and warnings
-#         if echo "$LOGS" | grep -q "FAIL-NEW:"; then
-#           FAIL_COUNT=$(echo "$LOGS" | grep "FAIL-NEW:" | tail -1 | awk '{print $2}')
-#           echo "❌ Critical vulnerabilities found: $FAIL_COUNT"
-#           echo "SCAN_EXIT_CODE=2" >> $GITHUB_ENV
-#         elif echo "$LOGS" | grep -q "WARN-NEW:"; then
-#           WARN_COUNT=$(echo "$LOGS" | grep "WARN-NEW:" | tail -1 | awk '{print $4}')
-#           echo "⚠️ Medium-risk warnings found: $WARN_COUNT"
-#           echo "SCAN_EXIT_CODE=1" >> $GITHUB_ENV
-#         else
-#           echo "✅ No critical vulnerabilities found"
-#           echo "SCAN_EXIT_CODE=0" >> $GITHUB_ENV
-#         fi
-        
-#         # Cleanup job
-#         kubectl delete job zap-scan-${{ github.run_id }} -n flask-app
-
-#     - name: Process DAST results
-#       run: |
-#         echo "=== FINAL SECURITY ASSESSMENT ==="
-        
-#         if [ "${SCAN_EXIT_CODE:-0}" -eq 2 ]; then
-#           echo "❌ CRITICAL: High-risk vulnerabilities found in your Flask app!"
-#           echo "::error::DAST scan found critical security vulnerabilities"
-#           echo "🔒 Security recommendations:"
-#           echo "  - Review and fix high-risk vulnerabilities immediately"
-#           echo "  - Check input validation and sanitization"  
-#           echo "  - Verify authentication and authorization"
-#           exit 1
-#         elif [ "${SCAN_EXIT_CODE:-0}" -eq 1 ]; then
-#           echo "⚠️ WARNING: Medium-risk vulnerabilities found in your Flask app"
-#           echo "::warning::DAST scan found medium-risk security issues"
-#           echo "🔒 Security recommendations:"
-#           echo "  - Add security headers (X-Frame-Options, CSP, X-Content-Type-Options)"
-#           echo "  - Implement Content Security Policy"
-#           echo "  - Consider adding flask-talisman for security headers"
-#           echo "Continuing pipeline with warning..."
-#         else
-#           echo "✅ SUCCESS: Your Flask app passed security scanning!"
-#           echo "🔒 No critical vulnerabilities detected"
-#           echo "DAST security scan completed successfully"
-#         fi
-
-#     - name: Security scan complete
-#       run: |
-#         echo "🔒 DevSecOps DAST scan completed"
-#         echo "Your Flask app has been scanned for security vulnerabilities"
-#         echo "Pipeline can continue to next stages..."
-
-# name: DevSecOps DAST Pipeline
-
+# # This workflow runs a DAST scan using OWASP ZAP after the "Build, Scan and Push" workflow completes successfully.
 # on:
 #   push:
 #     branches: [ main ]
@@ -144,148 +7,59 @@
 #   workflow_dispatch:
 
 # jobs:
-#   dast-security-scan:
+#   dast-scan:
 #     runs-on: ubuntu-latest
     
 #     steps:
-#     - name: Checkout code
+#     - name: Checkout
 #       uses: actions/checkout@v4
-
+      
 #     - name: Setup kubectl
 #       run: |
 #         mkdir -p ~/.kube
 #         echo "${{ secrets.KUBECONFIG }}" | base64 -d > ~/.kube/config
 #         chmod 600 ~/.kube/config
-
-#     - name: Wait for Flask app
-#       run: |
-#         kubectl wait --for=condition=available deployment/flask-app -n flask-app --timeout=300s
-
-#     - name: Get Flask app URL
-#       run: |
-#         # Get service IP
-#         SERVICE_IP=$(kubectl get svc flask-app -n flask-app -o jsonpath='{.spec.clusterIP}')
-#         echo "FLASK_URL=http://$SERVICE_IP:80" >> $GITHUB_ENV
-#         echo "Flask app available at: $SERVICE_IP:80"
-
-#     - name: Setup port forward
-#       run: |
-#         # Port forward Flask app to localhost
-#         kubectl port-forward svc/flask-app 8080:80 -n flask-app &
-#         sleep 5
-#         echo "Port forward active on localhost:8080"
-
-#     - name: Run OWASP ZAP Security Scan
-#       run: |
-#         echo "🔍 Running DAST scan with Docker..."
         
-#         docker run --rm --network="host" \
-#           zaproxy/zap-stable \
-#           zap-baseline.py \
-#           -t http://localhost:8080 \
-#           -m 2 \
-#           -d \
-#           -I
-
-#     - name: Security Complete
-#       run: |
-#         echo "🔒 DAST scan completed!"
-#         echo "✅ No Kubernetes complexity - just simple Docker!"
-
-# name: DevSecOps DAST Pipeline
-
-# on:
-#   push:
-#     branches: [ main ]
-#   pull_request:
-#     branches: [ main ]
-#   workflow_dispatch:
-
-# jobs:
-#   dast-security-scan:
-#     runs-on: ubuntu-latest
-
-#     steps:
-#     - name: Checkout code
-#       uses: actions/checkout@v4
-
-#     - name: Setup kubectl
-#       run: |
-#         mkdir -p ~/.kube
-#         echo "${{ secrets.KUBECONFIG }}" | base64 -d > ~/.kube/config
-#         chmod 600 ~/.kube/config
-
-#     - name: Wait for Flask app
-#       run: |
-#         kubectl wait --for=condition=available deployment/flask-app -n flask-app --timeout=300s
-
-#     - name: Setup port forward
+#     - name: Wait for app
+#       run: kubectl wait --for=condition=available deployment/flask-app -n flask-app --timeout=300s
+      
+#     - name: Port forward
 #       run: |
 #         kubectl port-forward svc/flask-app 8080:80 -n flask-app &
 #         sleep 5
-#         echo "Port forward active on localhost:8080"
-#         curl -I http://localhost:8080
-
-#     - name: Run OWASP ZAP Baseline Scan (GitHub Action)
-#       uses: zaproxy/action-baseline@v0.10.0
-#       with:
-#         target: 'http://localhost:8080'
-#         fail_action: false
-#         report_file: zap-report.html
-#         xml_report_file: zap-report.xml
-#       continue-on-error: true
-
-#     # Dit is de fix: upload artifact stap, zonder underscore in naam!
-#     - name: Upload ZAP report artifact (HTML en XML)
-#       if: always()
-#       uses: actions/upload-artifact@v4
-#       with:
-#         name: zap-report
-#         path: |
-#           zap-report.html
-#           zap-report.xml
-
-#     - name: Upload ZAP report to DefectDojo
+        
+#     - name: ZAP Scan
+#       run: |
+#         docker run --rm -v $PWD:/zap/wrk/:rw --user root --network=host \
+#           ghcr.io/zaproxy/zaproxy:stable \
+#           zap-baseline.py -t http://localhost:8080 -J report.json -r report.html -x report.xml -a \
+#           || true
+        
+#         ls -la *.xml *.html *.json
+        
+#     - name: Upload to DefectDojo
 #       if: always()
 #       run: |
-#         if [ -f "zap-report.xml" ]; then
-#           echo "📤 Uploading XML scan results to DefectDojo..."
-#           RESPONSE=$(curl -s -w "%{http_code}" -X POST "${{ secrets.DEFECTDOJO_URL }}/api/v2/import-scan/" \
-#             -H "Authorization: Token ${{ secrets.DEFECTDOJO_TOKEN }}" \
-#             -F "engagement=${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}" \
-#             -F "scan_type=ZAP Scan" \
-#             -F "file=@zap-report.xml" \
-#             -F "active=true" \
-#             -F "verified=true" \
-#             -F "test_title=DAST-Pipeline-${{ github.run_id }}" \
-#             -F "branch_tag=${{ github.ref_name }}" \
-#             -F "commit_hash=${{ github.sha }}")
-#           HTTP_CODE=$(echo "$RESPONSE" | tail -c 4)
-#           if [ "$HTTP_CODE" -eq 201 ] || [ "$HTTP_CODE" -eq 200 ]; then
-#             echo "✅ Successfully uploaded to DefectDojo"
-#           else
-#             echo "⚠️ DefectDojo upload failed with HTTP code: $HTTP_CODE"
-#             echo "Response: $RESPONSE"
-#           fi
-#         else
-#           echo "⚠️ No XML report found - skipping DefectDojo upload"
-#         fi
+#         curl -X POST "${{ secrets.DEFECTDOJO_URL }}/api/v2/import-scan/" \
+#           -H "Authorization: Token ${{ secrets.DEFECTDOJO_API_KEY }}" \
+#           -F "scan_date=$(date +%Y-%m-%d)" \
+#           -F "scan_type=ZAP Scan" \
+#           -F "engagement=${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}" \
+#           -F "file=@report.xml"
 
-#     - name: Security Complete
-#       run: |
-#         echo "🔒 DAST scan completed!"
-#         echo "✅ OWASP ZAP GitHub Action, artifact, en DefectDojo upload zijn klaar."
 name: DevSecOps DAST Pipeline
 on:
-  push:
-    branches: [ main ]
-  pull_request:
+  workflow_run:
+    workflows: ["Build, Scan and Push"]  # Naam van je andere workflow
+    types:
+      - completed
     branches: [ main ]
   workflow_dispatch:
 
 jobs:
   dast-scan:
     runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}  # Alleen als build succesvol was
     
     steps:
     - name: Checkout

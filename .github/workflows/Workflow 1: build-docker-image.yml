@@ -1,161 +1,161 @@
-# name: Build, Scan and Push
+name: Build, Scan and Push
 
-# on:
-#   workflow_dispatch:  # Alleen handmatig triggeren
-#   workflow_run:
-#     workflows: ["SAST Security Pipeline"]
-#     types:
-#       - completed
-#     branches: [main]
+on:
+  workflow_dispatch:  # Alleen handmatig triggeren
+  workflow_run:
+    workflows: ["SAST Security Pipeline"]
+    types:
+      - completed
+    branches: [main]
 
-# jobs:
-#   build_scan_push:
-#     name: Build, Scan and Push Docker Image
-#     # Alleen uitvoeren als de SAST workflow slaagt
-#     if: ${{ github.event.workflow_run.conclusion == 'success' }}
-#     runs-on: ubuntu-latest
-#     steps:
-#       - name: Checkout code
-#         uses: actions/checkout@v3
+jobs:
+  build_scan_push:
+    name: Build, Scan and Push Docker Image
+    # Alleen uitvoeren als de SAST workflow slaagt
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-#       - name: Set up Docker Buildx
-#         uses: docker/setup-buildx-action@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
         
-#       - name: Set Version
-#         id: semver
-#         run: |
-#           # Voor eenvoud, gebruik gewoon de workflow run number als versie
-#           # Dit zorgt voor automatisch oplopende nummers
-#           RUN_NUMBER=${{ github.run_number }}
+      - name: Set Version
+        id: semver
+        run: |
+          # Voor eenvoud, gebruik gewoon de workflow run number als versie
+          # Dit zorgt voor automatisch oplopende nummers
+          RUN_NUMBER=${{ github.run_number }}
           
-#           # Eenvoudige versie in format 1.0.X waar X het workflow run nummer is
-#           VERSION="1.0.$RUN_NUMBER"
+          # Eenvoudige versie in format 1.0.X waar X het workflow run nummer is
+          VERSION="1.0.$RUN_NUMBER"
           
-#           echo "version=$VERSION" >> $GITHUB_OUTPUT
-#           echo "Using version: $VERSION"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Using version: $VERSION"
 
-#       - name: Build Docker image
-#         uses: docker/build-push-action@v5
-#         with:
-#           context: .
-#           load: true
-#           tags: flask-app:${{ github.sha }}
-#           push: false
+      - name: Build Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          load: true
+          tags: flask-app:${{ github.sha }}
+          push: false
 
-#       - name: Install Syft and Generate SBOM
-#         run: |
-#           mkdir -p scan-results
-#           curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
-#           syft flask-app:${{ github.sha }} -o cyclonedx-json=scan-results/sbom.cyclonedx.json -o spdx-json=scan-results/sbom.spdx.json
-#           echo "Package Summary:"
-#           syft flask-app:${{ github.sha }} -o table | head -n 20
+      - name: Install Syft and Generate SBOM
+        run: |
+          mkdir -p scan-results
+          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+          syft flask-app:${{ github.sha }} -o cyclonedx-json=scan-results/sbom.cyclonedx.json -o spdx-json=scan-results/sbom.spdx.json
+          echo "Package Summary:"
+          syft flask-app:${{ github.sha }} -o table | head -n 20
 
-#       - name: Install Grype and Scan for Vulnerabilities
-#         id: vulnerability_scan
-#         run: |
-#           curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
-#           grype flask-app:${{ github.sha }} -o json > scan-results/grype-vulnerabilities.json
-#           echo "Vulnerability Summary:"
-#           CRITICAL_COUNT=$(jq '.matches | map(select(.vulnerability.severity == "Critical")) | length' scan-results/grype-vulnerabilities.json)
-#           HIGH_COUNT=$(jq '.matches | map(select(.vulnerability.severity == "High")) | length' scan-results/grype-vulnerabilities.json)
-#           echo "Critical vulnerabilities: $CRITICAL_COUNT"
-#           echo "High vulnerabilities: $HIGH_COUNT"
-#           echo "critical_vulnerabilities=$CRITICAL_COUNT" >> $GITHUB_OUTPUT
-#           echo "high_vulnerabilities=$HIGH_COUNT" >> $GITHUB_OUTPUT
-#           if [ "$CRITICAL_COUNT" -gt 0 ]; then
-#             echo "WARNING: $CRITICAL_COUNT critical vulnerabilities found"
-#             echo "Top Critical Vulnerabilities:"
-#             jq -r '.matches | map(select(.vulnerability.severity == "Critical")) | .[0:5] | .[] | "\(.vulnerability.id) in \(.artifact.name) v\(.artifact.version)"' scan-results/grype-vulnerabilities.json
-#           fi
+      - name: Install Grype and Scan for Vulnerabilities
+        id: vulnerability_scan
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
+          grype flask-app:${{ github.sha }} -o json > scan-results/grype-vulnerabilities.json
+          echo "Vulnerability Summary:"
+          CRITICAL_COUNT=$(jq '.matches | map(select(.vulnerability.severity == "Critical")) | length' scan-results/grype-vulnerabilities.json)
+          HIGH_COUNT=$(jq '.matches | map(select(.vulnerability.severity == "High")) | length' scan-results/grype-vulnerabilities.json)
+          echo "Critical vulnerabilities: $CRITICAL_COUNT"
+          echo "High vulnerabilities: $HIGH_COUNT"
+          echo "critical_vulnerabilities=$CRITICAL_COUNT" >> $GITHUB_OUTPUT
+          echo "high_vulnerabilities=$HIGH_COUNT" >> $GITHUB_OUTPUT
+          if [ "$CRITICAL_COUNT" -gt 0 ]; then
+            echo "WARNING: $CRITICAL_COUNT critical vulnerabilities found"
+            echo "Top Critical Vulnerabilities:"
+            jq -r '.matches | map(select(.vulnerability.severity == "Critical")) | .[0:5] | .[] | "\(.vulnerability.id) in \(.artifact.name) v\(.artifact.version)"' scan-results/grype-vulnerabilities.json
+          fi
 
-#       - name: Upload scan results
-#         uses: actions/upload-artifact@v4
-#         with:
-#           name: scan-results-${{ github.sha }}
-#           path: scan-results/
-#           retention-days: 30
+      - name: Upload scan results
+        uses: actions/upload-artifact@v4
+        with:
+          name: scan-results-${{ github.sha }}
+          path: scan-results/
+          retention-days: 30
 
-#       - name: Security Gate
-#         id: security_gate
-#         run: |
-#           CRITICAL_COUNT=${{ steps.vulnerability_scan.outputs.critical_vulnerabilities }}
-#           if [ "$CRITICAL_COUNT" -gt 0 ]; then
-#             echo "FAILED: $CRITICAL_COUNT critical vulnerabilities found"
-#             echo "⛔ Security gate failed - pushing of image aborted"
-#             exit 1
-#           else
-#             echo "✅ Security gate passed - proceeding to push image"
-#           fi
+      - name: Security Gate
+        id: security_gate
+        run: |
+          CRITICAL_COUNT=${{ steps.vulnerability_scan.outputs.critical_vulnerabilities }}
+          if [ "$CRITICAL_COUNT" -gt 0 ]; then
+            echo "FAILED: $CRITICAL_COUNT critical vulnerabilities found"
+            echo "⛔ Security gate failed - pushing of image aborted"
+            exit 1
+          else
+            echo "✅ Security gate passed - proceeding to push image"
+          fi
 
-#       - name: Login to Azure Container Registry
-#         if: success()
-#         uses: azure/docker-login@v1
-#         with:
-#           login-server: ${{ secrets.ACR_LOGIN_SERVER }}
-#           username: ${{ secrets.ACR_USERNAME }}
-#           password: ${{ secrets.ACR_PASSWORD }}
+      - name: Login to Azure Container Registry
+        if: success()
+        uses: azure/docker-login@v1
+        with:
+          login-server: ${{ secrets.ACR_LOGIN_SERVER }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
 
-#       - name: Tag and Push Docker image
-#         if: success()
-#         run: |
-#           # Tag met versienummer
-#           docker tag flask-app:${{ github.sha }} ${{ secrets.ACR_LOGIN_SERVER }}/flask-app:${{ steps.semver.outputs.version }}
+      - name: Tag and Push Docker image
+        if: success()
+        run: |
+          # Tag met versienummer
+          docker tag flask-app:${{ github.sha }} ${{ secrets.ACR_LOGIN_SERVER }}/flask-app:${{ steps.semver.outputs.version }}
           
-#           # Push image
-#           docker push ${{ secrets.ACR_LOGIN_SERVER }}/flask-app:${{ steps.semver.outputs.version }}
+          # Push image
+          docker push ${{ secrets.ACR_LOGIN_SERVER }}/flask-app:${{ steps.semver.outputs.version }}
           
-#           echo "Successfully pushed secure image to Azure Container Registry with version ${{ steps.semver.outputs.version }}"
+          echo "Successfully pushed secure image to Azure Container Registry with version ${{ steps.semver.outputs.version }}"
 
-#   upload_security_results:
-#     name: Upload Security Results to Security Tools
-#     needs: build_scan_push
-#     runs-on: ubuntu-latest
-#     steps:
-#       - name: Download Scan Results
-#         uses: actions/download-artifact@v4
-#         with:
-#           name: scan-results-${{ github.sha }}
-#           path: scan-results
+  upload_security_results:
+    name: Upload Security Results to Security Tools
+    needs: build_scan_push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Scan Results
+        uses: actions/download-artifact@v4
+        with:
+          name: scan-results-${{ github.sha }}
+          path: scan-results
 
-#       - name: Upload Grype to DefectDojo
-#         env:
-#           DEFECTDOJO_URL: ${{ secrets.DEFECTDOJO_URL }}
-#           DEFECTDOJO_API_KEY: ${{ secrets.DEFECTDOJO_API_KEY }}
-#           DEFECTDOJO_ENGAGEMENT_ID: ${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}
-#         run: |
-#           echo "⌛ Uploading Grype scan"
-#           # Gebruik alleen datum formaat zoals vereist door DefectDojo (YYYY-MM-DD)
-#           SCAN_DATE=$(date +"%Y-%m-%d")
-#           # Ook tijd apart opslaan voor logging
-#           SCAN_TIME=$(date +"%H:%M:%S")
-#           echo "Using scan date: $SCAN_DATE and time: $SCAN_TIME"
+      - name: Upload Grype to DefectDojo
+        env:
+          DEFECTDOJO_URL: ${{ secrets.DEFECTDOJO_URL }}
+          DEFECTDOJO_API_KEY: ${{ secrets.DEFECTDOJO_API_KEY }}
+          DEFECTDOJO_ENGAGEMENT_ID: ${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}
+        run: |
+          echo "⌛ Uploading Grype scan"
+          # Gebruik alleen datum formaat zoals vereist door DefectDojo (YYYY-MM-DD)
+          SCAN_DATE=$(date +"%Y-%m-%d")
+          # Ook tijd apart opslaan voor logging
+          SCAN_TIME=$(date +"%H:%M:%S")
+          echo "Using scan date: $SCAN_DATE and time: $SCAN_TIME"
           
-#           # Voeg een beschrijving toe die de tijd bevat, zodat je scans kunt onderscheiden
-#           SCAN_DESC="Scan uitgevoerd op $SCAN_DATE om $SCAN_TIME"
+          # Voeg een beschrijving toe die de tijd bevat, zodat je scans kunt onderscheiden
+          SCAN_DESC="Scan uitgevoerd op $SCAN_DATE om $SCAN_TIME"
           
-#           curl -X POST "$DEFECTDOJO_URL/api/v2/import-scan/" \
-#             -H "Authorization: Token $DEFECTDOJO_API_KEY" \
-#             -F "scan_date=$SCAN_DATE" \
-#             -F "scan_type=Anchore Grype" \
-#             -F "close_old_findings=true" \
-#             -F "test_title=Grype Scan $SCAN_DATE $SCAN_TIME" \
-#             -F "tags=time_$SCAN_TIME" \
-#             -F "description=$SCAN_DESC" \
-#             -F "deduplication_on_engagement=true" \
-#             -F "engagement=$DEFECTDOJO_ENGAGEMENT_ID" \
-#             -F "file=@scan-results/grype-vulnerabilities.json"
-#           echo "✅ Grype scan uploaded"
+          curl -X POST "$DEFECTDOJO_URL/api/v2/import-scan/" \
+            -H "Authorization: Token $DEFECTDOJO_API_KEY" \
+            -F "scan_date=$SCAN_DATE" \
+            -F "scan_type=Anchore Grype" \
+            -F "close_old_findings=true" \
+            -F "test_title=Grype Scan $SCAN_DATE $SCAN_TIME" \
+            -F "tags=time_$SCAN_TIME" \
+            -F "description=$SCAN_DESC" \
+            -F "deduplication_on_engagement=true" \
+            -F "engagement=$DEFECTDOJO_ENGAGEMENT_ID" \
+            -F "file=@scan-results/grype-vulnerabilities.json"
+          echo "✅ Grype scan uploaded"
 
-#       - name: Upload SBOM to Dependency-Track
-#         env:
-#           DT_URL: ${{ secrets.DEPENDENCYTRACK_URL }}
-#           DT_API_KEY: ${{ secrets.DEPENDENCYTRACK_API_KEY }}
-#           PROJECT_UUID: ${{ secrets.DEPENDENCYTRACK_PROJECT_UUID }}
-#         run: |
-#           echo "⌛ Uploading SBOM to Dependency-Track"
-#           curl -X POST "$DT_URL/api/v1/bom" \
-#             -H "X-API-Key: $DT_API_KEY" \
-#             -H "Content-Type: multipart/form-data" \
-#             -F "project=$PROJECT_UUID" \
-#             -F "bom=@scan-results/sbom.cyclonedx.json"
-#           echo "✅ SBOM uploaded to Dependency-Track"
+      - name: Upload SBOM to Dependency-Track
+        env:
+          DT_URL: ${{ secrets.DEPENDENCYTRACK_URL }}
+          DT_API_KEY: ${{ secrets.DEPENDENCYTRACK_API_KEY }}
+          PROJECT_UUID: ${{ secrets.DEPENDENCYTRACK_PROJECT_UUID }}
+        run: |
+          echo "⌛ Uploading SBOM to Dependency-Track"
+          curl -X POST "$DT_URL/api/v1/bom" \
+            -H "X-API-Key: $DT_API_KEY" \
+            -H "Content-Type: multipart/form-data" \
+            -F "project=$PROJECT_UUID" \
+            -F "bom=@scan-results/sbom.cyclonedx.json"
+          echo "✅ SBOM uploaded to Dependency-Track"

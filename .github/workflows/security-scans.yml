@@ -1,170 +1,170 @@
-# name: SAST Security Pipeline
-# on:
-#   push:
-#     branches: [main]
-#   pull_request:
-#     branches: [main]
+name: SAST Security Pipeline
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
 
-# jobs:
-#   gitleaks:
-#     name: GitLeaks (Secrets)
-#     runs-on: ubuntu-latest
-#     steps:
-#       - uses: actions/checkout@v4
-#         with:
-#           fetch-depth: 0
+jobs:
+  gitleaks:
+    name: GitLeaks (Secrets)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
           
-#       - name: Run GitLeaks
-#         continue-on-error: true
-#         run: |
-#           wget -q https://github.com/zricethezav/gitleaks/releases/download/v8.18.1/gitleaks_8.18.1_linux_x64.tar.gz
-#           tar -xzf gitleaks_8.18.1_linux_x64.tar.gz && sudo mv gitleaks /usr/local/bin/
+      - name: Run GitLeaks
+        continue-on-error: true
+        run: |
+          wget -q https://github.com/zricethezav/gitleaks/releases/download/v8.18.1/gitleaks_8.18.1_linux_x64.tar.gz
+          tar -xzf gitleaks_8.18.1_linux_x64.tar.gz && sudo mv gitleaks /usr/local/bin/
           
-#           gitleaks detect --source=. --report-format=json --report-path=gitleaks-results.json || true
+          gitleaks detect --source=. --report-format=json --report-path=gitleaks-results.json || true
           
-#           if [ -f gitleaks-results.json ]; then
-#             FOUND=$(jq 'length' gitleaks-results.json 2>/dev/null || echo "0")
-#             echo "🔍 GitLeaks: $FOUND secrets found"
-#           fi
+          if [ -f gitleaks-results.json ]; then
+            FOUND=$(jq 'length' gitleaks-results.json 2>/dev/null || echo "0")
+            echo "🔍 GitLeaks: $FOUND secrets found"
+          fi
           
-#       - uses: actions/upload-artifact@v4
-#         with:
-#           name: gitleaks-results
-#           path: gitleaks-results.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gitleaks-results
+          path: gitleaks-results.json
 
-#   semgrep:
-#     name: Semgrep (Code Security)
-#     runs-on: ubuntu-latest
-#     steps:
-#       - uses: actions/checkout@v4
-#       - uses: actions/setup-python@v5
-#         with:
-#           python-version: '3.11'
+  semgrep:
+    name: Semgrep (Code Security)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
         
-#       - name: Run Semgrep
-#         continue-on-error: true
-#         run: |
-#           pip install semgrep
-#           mkdir -p semgrep-results
+      - name: Run Semgrep
+        continue-on-error: true
+        run: |
+          pip install semgrep
+          mkdir -p semgrep-results
           
-#           semgrep --config p/default --json --output semgrep-results/results.json . || true
+          semgrep --config p/default --json --output semgrep-results/results.json . || true
           
-#           if [ -f semgrep-results/results.json ]; then
-#             FINDINGS=$(jq '.results | length' semgrep-results/results.json 2>/dev/null || echo "0")
-#             echo "🔍 Semgrep: $FINDINGS findings"
-#           fi
+          if [ -f semgrep-results/results.json ]; then
+            FINDINGS=$(jq '.results | length' semgrep-results/results.json 2>/dev/null || echo "0")
+            echo "🔍 Semgrep: $FINDINGS findings"
+          fi
           
-#       - uses: actions/upload-artifact@v4
-#         with:
-#           name: semgrep-results
-#           path: semgrep-results/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: semgrep-results
+          path: semgrep-results/
 
-#   bandit:
-#     name: Bandit (Python Security)
-#     runs-on: ubuntu-latest
-#     steps:
-#       - uses: actions/checkout@v4
-#       - uses: actions/setup-python@v5
-#         with:
-#           python-version: '3.11'
+  bandit:
+    name: Bandit (Python Security)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
           
-#       - name: Run Bandit
-#         continue-on-error: true
-#         run: |
-#           pip install bandit
-#           mkdir -p bandit-results
+      - name: Run Bandit
+        continue-on-error: true
+        run: |
+          pip install bandit
+          mkdir -p bandit-results
           
-#           bandit -r . -ll -f json -o bandit-results/results.json || true
+          bandit -r . -ll -f json -o bandit-results/results.json || true
           
-#           if [ -f bandit-results/results.json ]; then
-#             HIGH=$(jq '.results | map(select(.issue_severity == "HIGH")) | length' bandit-results/results.json 2>/dev/null || echo "0")
-#             MEDIUM=$(jq '.results | map(select(.issue_severity == "MEDIUM")) | length' bandit-results/results.json 2>/dev/null || echo "0")
-#             echo "🔍 Bandit: $HIGH high, $MEDIUM medium issues"
-#           fi
+          if [ -f bandit-results/results.json ]; then
+            HIGH=$(jq '.results | map(select(.issue_severity == "HIGH")) | length' bandit-results/results.json 2>/dev/null || echo "0")
+            MEDIUM=$(jq '.results | map(select(.issue_severity == "MEDIUM")) | length' bandit-results/results.json 2>/dev/null || echo "0")
+            echo "🔍 Bandit: $HIGH high, $MEDIUM medium issues"
+          fi
           
-#       - uses: actions/upload-artifact@v4
-#         with:
-#           name: bandit-results
-#           path: bandit-results/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bandit-results
+          path: bandit-results/
 
-#   checkov:
-#     name: Checkov (Infrastructure Security)
-#     runs-on: ubuntu-latest
-#     steps:
-#       - uses: actions/checkout@v4
+  checkov:
+    name: Checkov (Infrastructure Security)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
       
-#       - name: Run Checkov
-#         uses: bridgecrewio/checkov-action@master
-#         with:
-#           directory: .
-#           framework: kubernetes,dockerfile,yaml,secrets
-#           output_format: json,sarif
-#           output_file_path: checkov-results
-#           soft_fail: true
-#           compact: true
+      - name: Run Checkov
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: .
+          framework: kubernetes,dockerfile,yaml,secrets
+          output_format: json,sarif
+          output_file_path: checkov-results
+          soft_fail: true
+          compact: true
 
-#       - name: Display Results
-#         run: |
-#           if [ -f checkov-results/results_json.json ]; then
-#             PASSED=$(jq '.summary.passed // 0' checkov-results/results_json.json)
-#             FAILED=$(jq '.summary.failed // 0' checkov-results/results_json.json)
-#             echo "🔍 Checkov: $PASSED passed, $FAILED failed"
-#           fi
+      - name: Display Results
+        run: |
+          if [ -f checkov-results/results_json.json ]; then
+            PASSED=$(jq '.summary.passed // 0' checkov-results/results_json.json)
+            FAILED=$(jq '.summary.failed // 0' checkov-results/results_json.json)
+            echo "🔍 Checkov: $PASSED passed, $FAILED failed"
+          fi
         
-#       - uses: actions/upload-artifact@v4
-#         with:
-#           name: checkov-results
-#           path: checkov-results/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: checkov-results
+          path: checkov-results/
 
-#   upload_to_defectdojo:
-#     name: Upload to DefectDojo
-#     runs-on: ubuntu-latest
-#     needs: [gitleaks, semgrep, bandit, checkov]
-#     if: always()
-#     steps:
-#       - name: Download All Results
-#         uses: actions/download-artifact@v4
-#         with:
-#           path: scan-results
+  upload_to_defectdojo:
+    name: Upload to DefectDojo
+    runs-on: ubuntu-latest
+    needs: [gitleaks, semgrep, bandit, checkov]
+    if: always()
+    steps:
+      - name: Download All Results
+        uses: actions/download-artifact@v4
+        with:
+          path: scan-results
 
-#       - name: Upload to DefectDojo
-#         env:
-#           DEFECTDOJO_URL: ${{ secrets.DEFECTDOJO_URL }}
-#           DEFECTDOJO_API_KEY: ${{ secrets.DEFECTDOJO_API_KEY }}
-#           DEFECTDOJO_ENGAGEMENT_ID: ${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}
-#         run: |
-#           upload_scan() {
-#             local file="$1"
-#             local scan_type="$2"
-#             local scan_name="$3"
+      - name: Upload to DefectDojo
+        env:
+          DEFECTDOJO_URL: ${{ secrets.DEFECTDOJO_URL }}
+          DEFECTDOJO_API_KEY: ${{ secrets.DEFECTDOJO_API_KEY }}
+          DEFECTDOJO_ENGAGEMENT_ID: ${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}
+        run: |
+          upload_scan() {
+            local file="$1"
+            local scan_type="$2"
+            local scan_name="$3"
             
-#             if [ ! -f "$file" ]; then
-#               echo "⚠️  $scan_name: file not found"
-#               return
-#             fi
+            if [ ! -f "$file" ]; then
+              echo "⚠️  $scan_name: file not found"
+              return
+            fi
             
-#             echo "📤 Uploading $scan_name..."
+            echo "📤 Uploading $scan_name..."
             
-#             HTTP_CODE=$(curl -s -w "%{http_code}" -o /dev/null \
-#               -X POST "$DEFECTDOJO_URL/api/v2/import-scan/" \
-#               -H "Authorization: Token $DEFECTDOJO_API_KEY" \
-#               -F "scan_date=$(date +%Y-%m-%d)" \
-#               -F "scan_type=$scan_type" \
-#               -F "test_title=$scan_name $(date +%Y-%m-%d)" \
-#               -F "engagement=$DEFECTDOJO_ENGAGEMENT_ID" \
-#               -F "file=@$file")
+            HTTP_CODE=$(curl -s -w "%{http_code}" -o /dev/null \
+              -X POST "$DEFECTDOJO_URL/api/v2/import-scan/" \
+              -H "Authorization: Token $DEFECTDOJO_API_KEY" \
+              -F "scan_date=$(date +%Y-%m-%d)" \
+              -F "scan_type=$scan_type" \
+              -F "test_title=$scan_name $(date +%Y-%m-%d)" \
+              -F "engagement=$DEFECTDOJO_ENGAGEMENT_ID" \
+              -F "file=@$file")
               
-#             if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
-#               echo "✅ $scan_name uploaded successfully"
-#             else
-#               echo "❌ $scan_name upload failed (HTTP: $HTTP_CODE)"
-#             fi
-#           }
+            if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
+              echo "✅ $scan_name uploaded successfully"
+            else
+              echo "❌ $scan_name upload failed (HTTP: $HTTP_CODE)"
+            fi
+          }
           
-#           # Upload all scans
-#           upload_scan "scan-results/semgrep-results/results.json" "Semgrep JSON Report" "Semgrep"
-#           upload_scan "scan-results/gitleaks-results/gitleaks-results.json" "Gitleaks Scan" "GitLeaks"
-#           upload_scan "scan-results/bandit-results/results.json" "Bandit Scan" "Bandit"
-#           upload_scan "scan-results/checkov-results/results_json.json" "Checkov Scan" "Checkov"
+          # Upload all scans
+          upload_scan "scan-results/semgrep-results/results.json" "Semgrep JSON Report" "Semgrep"
+          upload_scan "scan-results/gitleaks-results/gitleaks-results.json" "Gitleaks Scan" "GitLeaks"
+          upload_scan "scan-results/bandit-results/results.json" "Bandit Scan" "Bandit"
+          upload_scan "scan-results/checkov-results/results_json.json" "Checkov Scan" "Checkov"
           
-#           echo "🎉 All scans processed"
+          echo "🎉 All scans processed"
