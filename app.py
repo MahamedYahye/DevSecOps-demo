@@ -16,8 +16,8 @@ metrics = PrometheusMetrics(app, path="/metrics")
 metrics.info("app_info", "Applicatie metadata", version="1.0.0")
 
 # Hardcoded credentials - vulnerability
-# API_KEY = "abcdef1234567890"
-# HARDCODED_PASSWORD = "wachtwoord123!"
+API_KEY = "abcdef1234567890"
+HARDCODED_PASSWORD = "wachtwoord123!"
 
 
 # Database setup
