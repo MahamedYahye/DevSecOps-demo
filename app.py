@@ -1,4 +1,3 @@
-
 import logging
 from flask import Flask, request, jsonify, render_template
 import sqlite3
